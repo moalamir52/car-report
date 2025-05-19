@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 
@@ -59,7 +58,24 @@ export default function DailyBookingReport() {
   })();
 
   return (
-    <div style={{ padding: 20 }}>
+    <div style={{ padding: 20, fontFamily: "Arial" }}>
+      <a
+        href="https://moalamir52.github.io/Yelo/"
+        style={{
+          display: "inline-block",
+          marginBottom: "20px",
+          backgroundColor: "#ffd600",
+          color: "#6a1b9a",
+          padding: "10px 20px",
+          textDecoration: "none",
+          fontWeight: "bold",
+          borderRadius: "8px",
+          border: "2px solid #6a1b9a"
+        }}
+      >
+        ← Back to YELO
+      </a>
+
       <h2 style={{ textAlign: "center" }}>تقرير الحجز اليومي - Invygo</h2>
       <div style={{ marginBottom: 10, textAlign: "center" }}>
         <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} />
