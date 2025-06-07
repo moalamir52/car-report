@@ -790,7 +790,7 @@ export default function ContractsReport({ onBack }) {
     }}
     onClick={async () => {
       try {
-        await fetch('http://localhost:4000/save', {
+        await fetch('https://car-report-xu4v.onrender.com:10000/save', ...)
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ data: fileData })
@@ -816,7 +816,8 @@ export default function ContractsReport({ onBack }) {
     }}
     onClick={async () => {
       try {
-        const res = await fetch('https://car-report-xu4v.onrender.com/');
+        const res = await fetch('https://car-report-xu4v.onrender.com:10000/load', ...)
+
         const data = await res.json();
         setFileData(data);
         alert('✅ Data has been loaded from the database');
