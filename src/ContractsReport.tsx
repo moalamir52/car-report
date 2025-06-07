@@ -816,7 +816,7 @@ export default function ContractsReport({ onBack }) {
     }}
     onClick={async () => {
       try {
-        const res = await fetch('http://localhost:4000/load');
+        const res = await fetch('https://car-report-xu4v.onrender.com/');
         const data = await res.json();
         setFileData(data);
         alert('✅ Data has been loaded from the database');
