@@ -57,4 +57,3 @@ function App() {
     </div>
   );
 }
->>>>>>> d0c31bd (Add server.js with MongoDB integration)
