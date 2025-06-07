@@ -1,9 +1,17 @@
 {
   "name": "car-report",
   "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
   "private": true,
   "homepage": "https://moalamir52.github.io/car-report",
   "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "lucide-react": "^0.513.0",
+    "mongodb": "^6.17.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
