@@ -1,10 +1,10 @@
 {
   "files": {
-    "main.js": "/car-report/static/js/main.77108ffb.js",
+    "main.js": "/car-report/static/js/main.32e67ed2.js",
     "index.html": "/car-report/index.html",
-    "main.77108ffb.js.map": "/car-report/static/js/main.77108ffb.js.map"
+    "main.32e67ed2.js.map": "/car-report/static/js/main.32e67ed2.js.map"
   },
   "entrypoints": [
-    "static/js/main.77108ffb.js"
+    "static/js/main.32e67ed2.js"
   ]
 }
