@@ -14,22 +14,25 @@ function App() {
       {view === "daily" ? (
         <>
           <DailyBookingReport />
-          <div style={{ height: 90 }} /> {/* هذا السطر يضيف مساحة فارغة أسفل الصفحة */} 
+          <div style={{ height: 70 }} /> {/* هذا السطر يضيف مساحة فارغة أسفل الصفحة */} 
           <div
-            style={{
-              position: 'fixed',
-              left: 0,
-              bottom: 0,
-              width: '100%',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              background: 'rgba(255,255,255,0.95)',
-              padding: '24px 0',
-              boxShadow: '0 -2px 12px #6A1B9A',
-              zIndex: 100
-            }}
-          >
+  style={{
+    position: 'fixed',
+    left: '50%',
+    bottom: '20px',
+    transform: 'translateX(-50%)',
+    width: '20%',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    background: 'rgba(244, 238, 247, 0)',
+    padding: '16px',
+    boxShadow: '0 2px 12px #6A1B9A',
+    borderRadius: '12px',
+    zIndex: 100
+  }}
+>
+
             <button
               onClick={() => setView("contracts")}
               style={{

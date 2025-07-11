@@ -21,6 +21,81 @@ export default function ContractsReport({ onBack }) {
   const [dateOrder, setDateOrder] = useState('DMY'); // DMY = dd/mm/yyyy, MDY = mm/dd/yyyy
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [selectedContract, setSelectedContract] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+
+
+// ✅ Contract Check Logic
+const [contractCheckResults, setContractCheckResults] = useState([]);
+  const [checkingContracts, setCheckingContracts] = useState(false);
+  const [checkFilter, setCheckFilter] = useState('');
+
+  const normalize = (val) => (val || '').toString().trim().toLowerCase();
+
+  const runContractCheck = async () => {
+    if (!fileData || fileData.length === 0) {
+      alert("📂 Upload EJAR File First");
+      return;
+    }
+    setCheckingContracts(true);
+    setContractCheckResults([]);
+
+    try {
+      const openListURL = "https://gsx2json.com/api?id=1XwBko5v8zOdTdv-By8HK_DvZnYT2T12mBw_SIbCfMkE&sheet=Open%20Contract";
+      const invygoClosedURL = "https://gsx2json.com/api?id=1XwBko5v8zOdTdv-By8HK_DvZnYT2T12mBw_SIbCfMkE&sheet=Invygo%20Closed";
+      const monthlyClosedURL = "https://gsx2json.com/api?id=1XwBko5v8zOdTdv-By8HK_DvZnYT2T12mBw_SIbCfMkE&sheet=Monthly%20Closed";
+
+      const resOpen = await fetch(openListURL).then(r => r.json());
+      const resInvygo = await fetch(invygoClosedURL).then(r => r.json());
+      const resMonthly = await fetch(monthlyClosedURL).then(r => r.json());
+
+      const openList = new Set((resOpen.rows || []).map(r => normalize(r['Contract No.'])));
+      const invygoList = new Set((resInvygo.rows || []).map(r => normalize(r['Contract No.'] || r['Agreement'])));
+      const monthlyList = new Set((resMonthly.rows || []).map(r => normalize(r['Contract No.'] || r['Agreement'])));
+
+      const output = fileData.map(row => {
+        const contract = normalize(row['Contract No.'] || row['Agreement']);
+        const status = (row['Status'] || '').toLowerCase();
+        if (!contract) return null;
+
+        if (status.includes('close') || status.includes('delivered')) {
+          // ✅ استبعاد العقود القديمة المغلقة (عدى عليها أكثر من 6 شهور ومش موجودة في شيتات الإغلاق)
+const dropoffRaw = row['Drop-off Date'];
+const parsedDropoff = parseDateEjarFile(dropoffRaw);
+const sixMonthsAgo = new Date();
+sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+if (
+  parsedDropoff instanceof Date &&
+  !isNaN(parsedDropoff) &&
+  parsedDropoff < sixMonthsAgo &&
+  !invygoList.has(contract) &&
+  !monthlyList.has(contract)
+) {
+  return null; // 🧹 تجاهل العقد نهائيًا
+}
+
+          if (openList.has(contract)) return { contract, status: 'Closed', location: '⚠️ Already in Open', result: '❌ Error' };
+          if (invygoList.has(contract)) return { contract, status: 'Closed', location: '✅ Invygo Closed', result: '✅ OK' };
+          if (monthlyList.has(contract)) return { contract, status: 'Closed', location: '✅ Monthly Closed', result: '✅ OK' };
+          return { contract, status: 'Closed', location: '❌ Not Found', result: '❌ Missing' };
+        } else if (status.includes('open')) {
+          if (openList.has(contract)) return { contract, status: 'Open', location: '✅ Open List', result: '✅ OK' };
+          return { contract, status: 'Open', location: '❌ Not in Open', result: '❌ Missing' };
+        }
+        return { contract, status: '❓ Unknown', location: '❌', result: '⚠️ Unknown' };
+      }).filter(Boolean);
+
+      setContractCheckResults(output);
+    } catch (err) {
+      console.error("Error in contract check", err);
+      alert("❌ حصل خطأ أثناء الفحص");
+    } finally {
+      setCheckingContracts(false);
+    }
+  };
+
+
 
   const tableRef = useRef(null);
 
@@ -215,8 +290,11 @@ export default function ContractsReport({ onBack }) {
         return;
       } catch {}
     }
-    fetchAllSheets();
-    // eslint-disable-next-line
+    // لا تفعل أي شيء إذا لم يوجد ملف محفوظ
+    setFileData([]);
+    setOpenedContracts([]);
+    setClosedContracts([]);
+    setError(null);
   }, []);
 
   useEffect(() => {
@@ -264,7 +342,7 @@ export default function ContractsReport({ onBack }) {
 
       const updated = fileData.map((item) => {
         const match = invygoData.find((d) =>
-          (d['Agreement'] || '').toString().trim() === (item['Contract No.'] || '').toString().trim()
+          normalize(d['Agreement']) === normalize(item['Contract No.'])
         );
         if (match) {
           let merged = { ...item };
@@ -287,72 +365,154 @@ export default function ContractsReport({ onBack }) {
     }
   };
 
-  // روابط Google Sheet
-  const EJAR_JSON_URL = "https://gsx2json.com/api?id=1om1h9kRCm0fDMj6PCzZ1lXftr8q4Xq3HIWx-NxozIzw&sheet=Contracts";
-  const INVYGO_JSON_URL = "https://gsx2json.com/api?id=1fBLbbEYsA6nkM-ghX4BKr-huFpjnJ_XAnvbBmrajV3Q&sheet=Bookings";
-
-  // جلب بيانات الشيتين معًا
-  const fetchAllSheets = async () => {
-    setLoading(true);
-    try {
-      // Fetch Ejar
-      const resEjar = await fetch(EJAR_JSON_URL);
-      const dataEjar = await resEjar.json();
-      const rowsEjar = dataEjar.rows || dataEjar.data || dataEjar || [];
-      if (!Array.isArray(rowsEjar) || rowsEjar.length === 0) {
-        setError("❌ No data found in Ejar sheet.");
-        setLoading(false);
-        return;
-      }
-
-      // Fetch Invygo
-      const resInvygo = await fetch(INVYGO_JSON_URL);
-      const dataInvygo = await resInvygo.json();
-      const rowsInvygo = dataInvygo.rows || dataInvygo.data || dataInvygo || [];
-
-      // Always try to merge Invygo data if available
-      let mergedData = rowsEjar;
-      if (Array.isArray(rowsInvygo) && rowsInvygo.length > 0) {
-        mergedData = rowsEjar.map((item) => {
-          const match = rowsInvygo.find((d) =>
-            (d['Agreement'] || '').toString().trim() === (item['Contract No.'] || '').toString().trim()
-          );
-          if (match) {
-            let merged = { ...item };
-            Object.entries(COLUMN_MAP).forEach(([ejarKey, invygoKey]) => {
-              if (match[invygoKey]) {
-                merged[ejarKey] = match[invygoKey];
-              }
-            });
-            return merged;
-          }
-          return item;
-        });
-      }
-
-      setFileData(mergedData);
-      lastParseDateFn.current = parseDateGoogleSheet;
-      analyzeData(mergedData, parseDateGoogleSheet);
-      setError(null);
-      localStorage.setItem('contracts_file_data', JSON.stringify(mergedData));
-    } catch (err) {
-      setError("Kindly pick a date.✅");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // نسخ الأعمدة المحددة
   const handleCopySelectedColumns = () => {
     const data = activeTab === 'opened' ? openedContracts : closedContracts;
     if (selectedColumns.length === 0) return;
     const rows = data.map(row =>
-      selectedColumns.map(col => row[col] ?? '').join('\t')
+      selectedColumns.map(col => {
+        if (col === 'Booking Number') {
+          return row[col] || 'Monthly';
+        }
+        return row[col] ?? '';
+      }).join('\t')
     );
     const text = rows.join('\n');
     navigator.clipboard.writeText(text);
-    setSelectedColumns([]);
+    // setSelectedColumns([]); // تم التعليق حتى لا يتم إلغاء التحديد بعد النسخ
   };
+
+  // 1. أضف دالة نسخ كل الجدول بدون رؤوس الأعمدة
+  const handleCopyAllTable = () => {
+    const data = activeTab === 'opened' ? openedContracts : closedContracts;
+    if (data.length === 0) return;
+    const copyOrder = [
+      'Contract No.',
+      'Booking Number',
+      'Customer',
+      'Pick-up Branch',
+      'Plate No.',
+      'Model',
+      'Plate No.',
+      'Model',
+      'Pick-up Date',
+      'Phone Number'
+    ];
+
+    const rows = data.map(row =>
+      copyOrder.map(colKey => {
+        if (colKey === 'Booking Number') {
+          const val = row['Booking Number'];
+          if (val && String(val).trim().toLowerCase().startsWith('c')) {
+            return 'Leasing';
+          }
+          return val || 'Monthly';
+        }
+        if (colKey === 'Pick-up Date') {
+          return formatToDDMMYYYY(row['Pick-up Date']);
+        }
+        return row[colKey] ?? '';
+      }).join('\t')
+    );
+    const text = rows.join('\n');
+    navigator.clipboard.writeText(text);
+    setCopyToast('All table data copied!');
+    setTimeout(() => setCopyToast(''), 1500);
+  };
+
+  // دالة تتحقق إذا كان Booking Number رقم فقط وأقل من 7 أرقام (Invygo)
+  function isInvygo(val) {
+    if (!val) return false;
+    const str = String(val).trim();
+    return /^\d{1,6}$/.test(str);
+  }
+
+  const handleCopyInvygoOnly = () => {
+    const data = activeTab === 'opened' ? openedContracts : closedContracts;
+    if (!data.length) return;
+    const copyOrder = [
+      'Contract No.',
+      'Booking Number',
+      'Customer',
+      'Pick-up Branch',
+      'Plate No.',
+      'Model',
+      'Plate No.',
+      'Model',
+      'Pick-up Date',
+      'Phone Number'
+    ];
+    const filtered = data.filter(row => isInvygo(row['Booking Number']));
+    if (!filtered.length) {
+      setCopyToast('No Invygo rows to copy!');
+      setTimeout(() => setCopyToast(''), 1500);
+      return;
+    }
+    const rows = filtered.map(row =>
+      copyOrder.map(colKey => {
+        if (colKey === 'Booking Number') {
+          const val = row['Booking Number'];
+          if (val && String(val).trim().toLowerCase().startsWith('c')) {
+            return 'Leasing';
+          }
+          return val || 'Monthly';
+        }
+        if (colKey === 'Pick-up Date') {
+          return formatToDDMMYYYY(row['Pick-up Date']);
+        }
+        return row[colKey] ?? '';
+      }).join('\t')
+    );
+    const text = rows.join('\n');
+    navigator.clipboard.writeText(text);
+    setCopyToast('Copied!');
+    setTimeout(() => setCopyToast(''), 1500);
+  };
+
+  const handleCopyNonInvygoOnly = () => {
+    const data = activeTab === 'opened' ? openedContracts : closedContracts;
+    if (!data.length) return;
+    const copyOrder = [
+      'Contract No.',
+      'Booking Number',
+      'Customer',
+      'Pick-up Branch',
+      'Plate No.',
+      'Model',
+      'Plate No.',
+      'Model',
+      'Pick-up Date',
+      'Phone Number'
+    ];
+    const filtered = data.filter(row => !isInvygo(row['Booking Number']));
+    if (!filtered.length) {
+      setCopyToast('No non-Invygo rows to copy!');
+      setTimeout(() => setCopyToast(''), 1500);
+      return;
+    }
+    const rows = filtered.map(row =>
+      copyOrder.map(colKey => {
+        if (colKey === 'Booking Number') {
+          const val = row['Booking Number'];
+          if (val && String(val).trim().toLowerCase().startsWith('c')) {
+            return 'Leasing';
+          }
+          return val || 'Monthly';
+        }
+        if (colKey === 'Pick-up Date') {
+          return formatToDDMMYYYY(row['Pick-up Date']);
+        }
+        return row[colKey] ?? '';
+      }).join('\t')
+    );
+    const text = rows.join('\n');
+    navigator.clipboard.writeText(text);
+    setCopyToast('Copied!');
+    setTimeout(() => setCopyToast(''), 1500);
+  };
+
+  // 2. أضف حالة توست (تنبيه مؤقت)
+  const [copyToast, setCopyToast] = useState('');
 
   useEffect(() => {
     const table = tableRef.current;
@@ -421,7 +581,6 @@ export default function ContractsReport({ onBack }) {
     padding: '10px',
     textAlign: 'center',
     border: `1px solid ${purple}`,
-    background: white,
     color: purpleDark,
     fontSize: '14px'
   };
@@ -463,6 +622,8 @@ export default function ContractsReport({ onBack }) {
     setError(null);
     setInvygoFileName('');
     setSelectedColumns([]);
+    setContractCheckResults([]);
+    setCheckFilter('');
     localStorage.removeItem('contracts_file_data');
   };
 
@@ -485,61 +646,122 @@ export default function ContractsReport({ onBack }) {
       return `${a}/${b}/${c}${timePart ? ' ' + timePart : ''}`;
     } else {
       // افترض إن a=month و b=day ← نعكسهم
-      return `${b}/${a}/${c}${timePart ? ' ' + timePart : ''}`;
+      return `${a}/${b}/${c}${timePart ? ' ' + timePart : ''}`;
     }
   };
 
   const renderTable = (data) => (
-    <div
-      ref={tableRef}
-      tabIndex={0}
-      style={{
-        overflowX: 'auto',
-        borderRadius: '12px',
-        boxShadow: '0 0 10px #6a1b9a',
-        outline: 'none'
-      }}
-      onClick={() => tableRef.current && tableRef.current.focus()}
-    >
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', border: '2px solid black', borderRadius: '12px' }}>
-        <thead>
-          <tr style={{ backgroundColor: '#ffd600', color: '#6a1b9a' }}>
-            {columns.map((col, idx) => (
-              <th
-                key={col.label}
-                style={{
-                  ...th,
-                  cursor: col.key ? 'pointer' : 'default',
-                  background: col.key && selectedColumns.includes(col.key) ? yellowDark : yellow,
-                  borderBottom: col.key && selectedColumns.includes(col.key) ? `4px solid ${purpleDark}` : th.border
-                }}
-                onClick={() => col.key && toggleColumn(col.key)}
-                title={col.key ? 'اضغط لتحديد/إلغاء تحديد العمود' : ''}
-              >
-                {col.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((item, index) => (
-            <tr key={index}>
-              <td style={td}>{index + 1}</td>
-              <td style={td}>{item['Contract No.']}</td>
-              <td style={td}>{item['Booking Number'] || 'Monthly'}</td>
-              <td style={td}>{item['Customer']}</td>
-              <td style={td}>{item['Pick-up Branch']}</td>
-              <td style={td}>{item['Plate No.']}</td>
-              <td style={td}>{item['Model']}</td>
-              <td style={td}>{formatToDDMMYYYY(item['Pick-up Date'])}</td>
-              <td style={td}>{item['Phone Number']}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div style={{fontSize:12, color:purpleDark, marginTop:4}}>
-        {selectedColumns.length > 0 && "اضغط Ctrl+C لنسخ الأعمدة المحددة"}
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <button
+          style={{ ...buttonStyle, background: '#6A1B9A', color: '#FFD600', fontWeight: 'bold', fontSize: 15 }}
+          onClick={handleCopyAllTable}
+          disabled={data.length === 0}
+        >
+          📋 Copy All Table
+        </button>
+        <button
+          style={{ ...buttonStyle, background: '#1976d2', color: '#fff', fontWeight: 'bold', fontSize: 15 }}
+          onClick={handleCopyInvygoOnly}
+          disabled={data.length === 0}
+        >
+          📋 Copy Invygo Only
+        </button>
+        <button
+          style={{ ...buttonStyle, background: '#388e3c', color: '#fff', fontWeight: 'bold', fontSize: 15 }}
+          onClick={handleCopyNonInvygoOnly}
+          disabled={data.length === 0}
+        >
+          📋 Copy Non-Invygo Only
+        </button>
       </div>
+      <div
+        ref={tableRef}
+        tabIndex={0}
+        style={{
+          overflowX: 'auto',
+          borderRadius: '12px',
+          boxShadow: '0 0 10px #6a1b9a',
+          outline: 'none'
+        }}
+        onClick={() => tableRef.current && tableRef.current.focus()}
+      >
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', border: '2px solid black', borderRadius: '12px' }}>
+          <thead>
+            <tr style={{ backgroundColor: '#ffd600', color: '#6a1b9a' }}>
+              {columns.map((col, idx) => (
+                <th
+                  key={col.label}
+                  style={{
+                    ...th,
+                    cursor: col.key ? 'pointer' : 'default',
+                    background: col.key && selectedColumns.includes(col.key) ? yellowDark : yellow,
+                    borderBottom: col.key && selectedColumns.includes(col.key) ? `4px solid ${purpleDark}` : th.border
+                  }}
+                  onClick={() => col.key && toggleColumn(col.key)}
+                  title={col.key ? 'اضغط لتحديد/إلغاء تحديد العمود' : ''}
+                >
+                  {col.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((item, index) => (
+              <tr key={index}>
+                <td style={td}>{index + 1}</td>
+                {/* عدل هنا: عند الضغط على رقم العقد يتم نسخه */}
+                <td
+                  style={{ ...td, cursor: 'pointer', color: '#1976d2', textDecoration: 'underline' }}
+                  onClick={() => {
+                    if (item['Contract No.']) {
+                      navigator.clipboard.writeText(item['Contract No.'].toString());
+                      setCopyToast('تم نسخ رقم العقد!');
+                      setTimeout(() => setCopyToast(''), 1200);
+                    }
+                  }}
+                  title="اضغط لنسخ رقم العقد"
+                >
+                  {item['Contract No.']}
+                </td>
+                <td style={td}>
+                  {item['Booking Number'] && item['Booking Number'].toString().trim().toLowerCase().startsWith('c')
+                    ? 'Leasing'
+                    : (item['Booking Number'] || 'Monthly')}
+                </td>
+                <td style={td}>{item['Customer']}</td>
+                <td style={td}>{item['Pick-up Branch']}</td>
+                <td style={td}>{item['Plate No.']}</td>
+                <td style={td}>{item['Model']}</td>
+                <td style={td}>{formatToDDMMYYYY(item['Pick-up Date'])}</td>
+                <td style={td}>{item['Phone Number']}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div style={{fontSize:12, color:purpleDark, marginTop:4}}>
+          {selectedColumns.length > 0 && "اضغط Ctrl+C لنسخ الأعمدة المحددة"}
+        </div>
+      </div>
+      {/* توست النسخ */}
+      {copyToast && (
+        <div style={{
+          position: 'fixed',
+          top: 30,
+          right: 30,
+          background: '#6A1B9A',
+          color: '#FFD600',
+          padding: '12px 24px',
+          borderRadius: 8,
+          fontWeight: 'bold',
+          fontSize: 16,
+          zIndex: 9999,
+          boxShadow: '0 2px 12px #6a1b9a33',
+          transition: 'opacity 0.3s'
+        }}>
+          {copyToast}
+        </div>
+      )}
     </div>
   );
 
@@ -663,53 +885,42 @@ export default function ContractsReport({ onBack }) {
           <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputStyle} required />
           <label style={{ fontSize: '15px', fontWeight: '600', color: purpleDark, marginLeft: 8 }}>End Date</label>
           <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inputStyle} required />
-          <button
-            style={{ ...buttonStyle, marginLeft: 8, padding: '6px 14px', fontSize: '13px' }}
-            onClick={toggleDateOrder}
-            title="Toggle day/month order"
-          >
-            {dateOrder === 'DMY' ? 'dd/mm/yyyy' : 'mm/dd/yyyy'}
-          </button>
+          {/* حذف زر تغيير ترتيب التاريخ */}
         </div>
         <div>
           <label style={{ fontSize: '15px', fontWeight: '600', color: purpleDark }}>Upload EJAR File</label><br />
           <input type="file" accept=".xlsx" onChange={handleFileChange} style={inputStyle} />
-          <button
-            style={{ ...buttonStyle, marginTop: 8, marginLeft: 4, padding: '6px 12px', fontSize: '13px' }}
-            onClick={() => window.open('https://docs.google.com/spreadsheets/d/17wivu0_2Yu60ho5BJAOJHHXjT8_TKTtLmutT0tB0Or4/edit?gid=491169651#gid=491169651', '_blank')}
-          >
-            +
-          </button>
+          {/* حذف زر + */}
         </div>
-        <div>
-          <label style={{ fontSize: '15px', fontWeight: '600', color: purpleDark }}>Upload INVYGO File</label><br />
-          <input type="file" accept=".xlsx,.csv" onChange={handleInvygoUpload} style={inputStyle} />
-          <button
-            style={{ ...buttonStyle, marginTop: 8, marginLeft: 4, padding: '6px 12px', fontSize: '13px' }}
-            onClick={() => window.open('https://docs.google.com/spreadsheets/d/1fBLbbEYsA6nkM-ghX4BKr-huFpjnJ_XAnvbBmrajV3Q/edit?gid=84385473#gid=84385473', '_blank')}
-          >
-           +
-          </button>
-        </div>
-        <div>
-          <label style={{ fontSize: '15px', fontWeight: '600', color: purpleDark }}></label><br />
-          <button
-            style={{ ...buttonStyle, marginTop: 8, marginLeft: 4, padding: '8px 16px', fontSize: '14px' }}
-            onClick={fetchAllSheets}
-            title="Refresh data from both Google Sheets"
-          >
-            🔄 Refresh
-          </button>
-        </div>
-        <div>
-          <label style={{ fontSize: '15px', fontWeight: '600', color: purpleDark }}></label><br />
-          <button
-            style={{ ...buttonStyle, marginTop: 8, marginLeft: 4, padding: '8px 16px', fontSize: '14px' }}
-            onClick={handleReset}
-          >
-            🗑️ Reset 
-          </button>
-        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '18px' }}>
+  <div>
+    <label style={{ fontSize: '15px', fontWeight: '600', color: purpleDark }}>Upload INVYGO File</label><br />
+    <input type="file" accept=".xlsx,.csv" onChange={handleInvygoUpload} style={inputStyle} />
+    {/* حذف زر + */}
+  </div>
+
+  <div>
+    <label style={{ fontSize: '15px', fontWeight: '600', color: purpleDark }}></label><br />
+    <button
+      style={{ ...buttonStyle, marginTop: 8, marginLeft: 4, padding: '8px 16px', fontSize: '14px' }}
+      onClick={handleReset}
+    >
+      🗑️ Reset
+    </button>
+  </div>
+
+  <div>
+    <label style={{ fontSize: '15px', fontWeight: '600', color: purpleDark }}></label><br />
+    <button
+      style={{ ...buttonStyle, marginTop: 8, marginLeft: 4, padding: '8px 16px', fontSize: '14px' }}
+      onClick={runContractCheck}
+      title="Check contracts status"
+    >
+      🕵️ Check Contracts
+    </button>
+  </div>
+</div>
+
       </div>
 
       {error && <p style={{ color: '#d32f2f', marginBottom: '16px', fontWeight: 'bold' }}>{error}</p>}
@@ -737,7 +948,7 @@ export default function ContractsReport({ onBack }) {
       <div style={{ marginBottom: 16 }}>
         <input
           type="text"
-          placeholder="🔍 بحث في النتائج..."
+          placeholder="🔍 Search ..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           style={{
@@ -745,7 +956,7 @@ export default function ContractsReport({ onBack }) {
             width: 260,
             marginRight: 12,
             fontSize: 15,
-            direction: 'rtl'
+            direction: ''
           }}
         />
         <button
@@ -776,59 +987,158 @@ export default function ContractsReport({ onBack }) {
           )}
         </div>
       )}
+{contractCheckResults.length > 0 && (
+  <div style={{ marginTop: 40 }}>
+    <h3 style={{ color: purpleDark }}>📋 Contract Check Results</h3>
 
-      <div>
-  <button
+    <input
+      type="text"
+      placeholder="🔍 Search results..."
+      value={checkFilter}
+      onChange={(e) => setCheckFilter(e.target.value)}
+      style={{
+        padding: '8px',
+        width: '20%',
+        marginBottom: '16px',
+        fontSize: '14px',
+        border: '1px solid #ccc',
+        borderRadius: '4px',
+      }}
+    />
+
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', marginTop: 12 }}>
+      <thead>
+        <tr style={{ background: yellow, color: purpleDark }}>
+          <th style={th}>#</th>
+          <th style={th}>Contract</th>
+          <th style={th}>Status</th>
+          <th style={th}>Location</th>
+          <th style={th}>Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        {contractCheckResults
+  .filter((r) =>
+    r.contract.toLowerCase().includes(checkFilter.toLowerCase()) ||
+    r.status.toLowerCase().includes(checkFilter.toLowerCase()) ||
+    r.location.toLowerCase().includes(checkFilter.toLowerCase()) ||
+    r.result.toLowerCase().includes(checkFilter.toLowerCase())
+  )
+  .map((r, i) => (
+  <tr
+    key={i}
     style={{
-      ...buttonStyle,
-      marginTop: 8,
-      marginLeft: 4,
-      padding: '8px 16px',
-      fontSize: '14px',
-      background: '#6A1B9A',
-      color: '#FFD600'
-    }}
-    onClick={async () => {
-      try {
-        await fetch('https://car-report-xu4v.onrender.com:10000/save', ...)
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ data: fileData })
-        });
-        alert('✅ Data has been saved to the database');
-      } catch {
-        alert('❌ An error occurred while saving');
-      }
+      cursor: '',
+      backgroundColor:
+        r.result.trim() === '❌ Error' ? '#ffcdd2' :
+        r.result.includes('❌') ? '#fbe9e7' :
+        'white'
     }}
   >
-    💾 Save to Cloud
-  </button>
+    <td style={td}>{i + 1}</td>
 
-  <button
-    style={{
-      ...buttonStyle,
-      marginTop: 8,
-      marginLeft: 4,
-      padding: '8px 16px',
-      fontSize: '14px',
-      background: '#4A148C',
-      color: '#FFD600'
-    }}
-    onClick={async () => {
-      try {
-        const res = await fetch('https://car-report-xu4v.onrender.com:10000/load', ...)
+    <td
+      style={{ ...td, cursor: 'pointer', textDecoration: '' }}
+      onClick={() => navigator.clipboard.writeText(r.contract)}
+      title="Click to copy"
+    >
+      {r.contract}
+    </td>
 
-        const data = await res.json();
-        setFileData(data);
-        alert('✅ Data has been loaded from the database');
-      } catch {
-        alert('❌ An error occurred while loading');
-      }
-    }}
-  >
-    ☁️ Load from Cloud
-  </button>
-</div>
+    <td
+      style={{ ...td, cursor: 'pointer', textDecoration: 'underline' }}
+      onClick={(e) => {
+        e.stopPropagation(); // تمنع تأثير الضغط على الصف كله
+        const fullData = fileData.find(f =>
+          (f['Contract No.'] || f['Agreement'])?.toString().trim().toLowerCase() === r.contract
+        );
+        setSelectedContract({ ...r, ...fullData });
+        setShowModal(true);
+      }}
+      title="عرض تفاصيل العقد"
+    >
+      {r.status}
+    </td>
+
+    <td style={td}>{r.location}</td>
+
+    <td style={{ ...td, fontWeight: 'bold', color: r.result.includes('✅') ? 'green' : 'red' }}>
+      {r.result}
+    </td>
+  </tr>
+
+  ))}
+
+      </tbody>
+    </table>
+  </div>
+)}
+
+{showModal && selectedContract && (
+    <div
+      onClick={() => setShowModal(false)}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        height: '100%',
+        width: '100%',
+        background: 'rgba(0,0,0,0.3)',
+        zIndex: 9998
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'relative',
+          margin: '5% auto',
+          background: '#fff',
+          border: '2px solid #6A1B9A',
+          borderRadius: '12px',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+          padding: '24px',
+          zIndex: 9999,
+          width: '80%',
+          maxWidth: '600px'
+        }}
+      >
+        <h3 style={{ color: '#6A1B9A', marginBottom: '16px' }}>📄 تفاصيل العقد</h3>
+        <table style={{ width: '100%', marginBottom: '16px' }}>
+          <tbody>
+            {Object.entries(selectedContract)
+              .filter(([key, value]) =>
+                value !== undefined &&
+                value !== null &&
+                value.toString().trim() !== '' &&
+                !['status', 'Updated By', 'Type'].includes(key.trim())
+              )
+              .map(([key, value]) => (
+                <tr key={key}>
+                  <td style={{ padding: '6px 10px', fontWeight: 'bold', color: '#6A1B9A', width: '35%' }}>{key}</td>
+                  <td style={{ padding: '6px 10px' }}>{value.toString()}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+        <button
+          onClick={() => setShowModal(false)}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: '#6A1B9A',
+            color: '#FFD600',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: 'bold'
+          }}
+        >
+          إغلاق
+        </button>
+      </div>
+    </div>
+  )}
+
     </div>
   );
+  
 }

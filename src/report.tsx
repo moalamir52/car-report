@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
+import React from 'react';
 
 const yellow = '#FFD600';
 const yellowDark = '#FFC300';
 const purple = '#6A1B9A';
 const purpleDark = '#4A148C';
 const white = '#fff';
+
+
 
 const th = {
   padding: '10px',
@@ -25,33 +28,106 @@ const td = {
   color: purpleDark,
   fontSize: '14px'
 };
+const getBookingColor = (type) => {
+  switch (type.toLowerCase()) {
+    case "invygo": return "#0D47A1";       // blue
+    case "monthly": return "#4A148C";      // purple
+    case "daily": return "#EF6C00";        // orange
+    case "leasing": return "#2E7D32";      // green
+    default: return "#999";               // grey
+  }
+};
 
 export default function DailyBookingReport() {
   const [data, setData] = useState([]);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
   const [latestInvygoGroup, setLatestInvygoGroup] = useState(null);
   const [loadingInvygo, setLoadingInvygo] = useState(true);
+const [selectedRow, setSelectedRow] = useState(null);
+const [showModal, setShowModal] = useState(false);
+const [rowSource, setRowSource] = useState(""); // 'booked' أو 'closed'
+const [currentList, setCurrentList] = useState([]); // كل البيانات المفتوحة
+const [currentIndex, setCurrentIndex] = useState(-1); // الفهرس الحالي
+const [monthlyClosedGroup, setMonthlyClosedGroup] = useState(null);
+
 
   useEffect(() => {
-    const fetchSheet = async () => {
-      try {
-        const response = await fetch(
-          "https://docs.google.com/spreadsheets/d/1XwBko5v8zOdTdv-By8HK_DvZnYT2T12mBw_SIbCfMkE/export?format=csv&gid=769459790"
-        );
-        const text = await response.text();
-        const rows = text.split("\n").map((r) => r.split(","));
-        const headers = rows.find((row) => row.some((c) => c.trim() !== ""));
-        const values = rows.slice(rows.indexOf(headers) + 1);
-        const parsed = values
-          .filter((r) => r.length === headers.length && r.some((c) => c.trim() !== ""))
-          .map((r) => Object.fromEntries(r.map((c, i) => [headers[i]?.trim(), c?.trim()])))
-        setData(parsed);
-      } catch (error) {
-        console.error("Error loading report:", error);
-      }
-    };
-    fetchSheet();
-  }, []);
+  const fetchSheet = async () => {
+    try {
+      const response = await fetch(
+        "https://docs.google.com/spreadsheets/d/1XwBko5v8zOdTdv-By8HK_DvZnYT2T12mBw_SIbCfMkE/export?format=csv&gid=769459790"
+      );
+      const text = await response.text();
+      const rows = text.split("\n").map((r) => r.split(","));
+      const headers = rows.find((row) => row.some((c) => c.trim() !== ""));
+      const values = rows.slice(rows.indexOf(headers) + 1);
+      const parsed = values
+        .filter((r) => r.length === headers.length && r.some((c) => c.trim() !== ""))
+        .map((r) => Object.fromEntries(r.map((c, i) => [headers[i]?.trim(), c?.trim()])));
+      setData(parsed);
+    } catch (error) {
+      console.error("Error loading report:", error);
+    }
+  };
+
+  fetchSheet();
+  const fetchMonthlyClosed = async (gid) => {
+    try {
+      const response = await fetch(
+        "https://docs.google.com/spreadsheets/d/1XwBko5v8zOdTdv-By8HK_DvZnYT2T12mBw_SIbCfMkE/export?format=csv&gid=375289726"
+      );
+      const text = await response.text();
+      const rows = text.split("\n").map((r) => r.split(","));
+      const grouped = [];
+      let currentDate = null;
+
+      for (const row of rows) {
+        const firstCell = row[0]?.trim();
+        const isDate = /^\d{2}\/\d{2}\/\d{4}$/.test(firstCell);
+        if (isDate) {
+              currentDate = firstCell;
+              grouped.push({ date: currentDate, contracts: [], source: "monthly" });
+
+
+            } else if (currentDate && row.some(c => c.trim() !== "")) {
+              grouped[grouped.length - 1].contracts.push(row);
+            }
+          }
+          
+
+      setMonthlyClosedGroup({
+        ...grouped[grouped.length - 1],
+        allGroups: grouped
+      });
+    } catch (err) {
+      console.error("Failed to load Monthly Closed data:", err);
+    }
+  };
+
+  fetchMonthlyClosed();
+  // ✅ كود التنقل بالأسهم
+  const handleKeyDown = (e) => {
+    if (!showModal) return;
+
+    if (e.key === "ArrowRight" && currentIndex < currentList.length - 1) {
+      setCurrentIndex((prev) => {
+        const nextIndex = prev + 1;
+        setSelectedRow(currentList[nextIndex]);
+        return nextIndex;
+      });
+    } else if (e.key === "ArrowLeft" && currentIndex > 0) {
+      setCurrentIndex((prev) => {
+        const prevIndex = prev - 1;
+        setSelectedRow(currentList[prevIndex]);
+        return prevIndex;
+      });
+    }
+  };
+
+  window.addEventListener("keydown", handleKeyDown);
+  return () => window.removeEventListener("keydown", handleKeyDown);
+}, [showModal, currentIndex, currentList]);
+
 
   useEffect(() => {
     const fetchInvygo = async () => {
@@ -70,7 +146,8 @@ export default function DailyBookingReport() {
 
           if (isDate) {
             currentDate = firstCell;
-            grouped.push({ date: currentDate, contracts: [] });
+            grouped.push({ date: currentDate, contracts: [], source: "invygo" });
+
           } else if (currentDate && row.some((c) => c.trim() !== "")) {
             grouped[grouped.length - 1].contracts.push(row);
           }
@@ -108,77 +185,89 @@ export default function DailyBookingReport() {
     return normalized === selectedDate;
   });
 
-  const normalizeModel = (model) => {
-    if (!model) return "غير محدد";
-    const m = model.toLowerCase().replace(/\s+/g, "");
+  // ✅ عرض عدد السيارات حسب الموديل بعد التجميع الصحيح
+const unifiedModelName = (model: string): string => {
+  const cleaned = model.trim().toLowerCase();
 
-    // Peugeot 2008 Active, 2008 2025, PEUGEOT - 2008
-    if (
-      m.includes("peugeot2008") ||
-      m === "20082025" ||
-      m === "peugeot-2008" ||
-      m === "peugeot2008active"
-    ) {
-      return "Peugeot 2008";
-    }
+  if (
+    cleaned === 'peugeot - 2008' ||
+    cleaned === '2008 2025' ||
+    cleaned === 'peugeot 2008 active'
+  ) return 'Peugeot 2008';
 
-    // MG5 1.5L CVT STD, MG5 1.5L AT STD, MG5
-    if (
-      m.includes("mg51.5lcvtstd") ||
-    m.includes("mg51.5latstd") ||
-    m.includes("mg5") ||
-    m === "52025" //
-    ) {
-      return "MG5 2025";
-    }
+  if (
+    cleaned === 'mg5 1.5l cvt std' ||
+    cleaned === 'mg5 1.5l at std' ||
+    cleaned === '5 2025'
+  ) return 'MG5 2025';
 
-    // 5 2024 تحت MG5 2024
-    if (m === "52024") {
-      return "MG5 2024";
-    }
+  if (cleaned === '5 2024' || cleaned === 'mg5 2024') return 'MG5 2024';
+  if (cleaned === 'mg5 del 2024') return 'MG5 DEL';
 
-    // jac s4, jac js4, s4 2023, jac-js4
-    if (
-      m.includes("jacs4") ||
-      m.includes("jacjs4") ||
-      m === "s42023" ||
-      m.includes("jac-js4")
-    ) {
-      return "JAC S4";
-    }
+  if (
+    cleaned === 'tiggo 4 pro' ||
+    cleaned === 'tiggo 4  2025' ||
+    cleaned === 'tiggo 4 2025'
+  ) return 'Tiggo 4';
 
-    // tiggo 4 pro, tiggo 4 2025 (أي اختلاف في المسافات)
-    if (m.includes("tiggo4pro") || m.includes("tiggo42025")) {
-      return "Tiggo 4 2025";
-    }
+  if (
+    cleaned === 'emgrand 2024' ||
+    cleaned === 'geely emgrand gs' ||
+    cleaned === 'emgrand gk 2024'
+  ) return 'Geely Emgrand';
 
-    // Pegas 2024, KIA Pegas
-    if (
-      m === "pegas2024" ||
-      m === "kiapegas"
-    ) {
-      return "Pegas 2024";
-    }
+  if (
+    cleaned === 'attrage 2023' ||
+    cleaned === 'mitsubishi attrage' ||
+    cleaned === 'attrage - 2023'
+  ) return 'Attrage 2023';
 
-    // Attrage 2023, Mitsubishi Attrage
-    if (
-      m === "attrage2023" ||
-      m === "mitsubishiattrage"
-    ) {
-      return "Attrage 2023";
-    }
+  if (cleaned === 'attrage 2022') return 'Attrage 2022';
 
-    // يمكنك إضافة قواعد أخرى هنا حسب الحاجة
+  if (
+    cleaned === 'pegas 2024' ||
+    cleaned === 'kia pegas 2024' ||
+    cleaned === 'kia - pegas' ||
+    cleaned === 'kia pegas'
+  ) return 'Pegas 2024';
 
-    return model.trim();
-  };
+  if (cleaned === 'kia pegas') return 'KIA Pegas';
+
+  if (
+    cleaned === 's4 2023' ||
+    cleaned === 'jac-js4'
+  ) return 'JAC S4';
+
+  if (cleaned === 's3 2023') return 'S3 2023';
+  if (cleaned === 'j7 2023') return 'J7 2023';
+
+  return model.trim(); // كل الباقي يرجع كما هو
+};
+
+
+const countByModel = (rawData: any[]): Record<string, number> => {
+  const modelCount: Record<string, number> = {};
+
+  for (const row of rawData) {
+    const model = String(row['Model'] || '').trim();
+
+    if (!model || model.toLowerCase() === 'model') continue;
+
+    const unified = unifiedModelName(model);
+    modelCount[unified] = (modelCount[unified] || 0) + 1;
+  }
+
+  return modelCount;
+};
+
+
 
   const allCarCount = (() => {
     const grouped = {};
     data.forEach((row) => {
       const booking = row["Booking Number"] || "";
       if (!booking || isNaN(Number(booking))) return;
-      let model = normalizeModel(row["Model"]);
+      let model = unifiedModelName(row["Model"]);
       grouped[model] = (grouped[model] || 0) + 1;
     });
     return grouped;
@@ -229,9 +318,14 @@ export default function DailyBookingReport() {
   };
 
   // تصفية المجموعات حسب التاريخ المختار
-  const selectedInvygoGroups = allInvygoGroups.filter(
-    group => formatInvygoDate(group.date) === selectedDate
-  );
+  const allClosedGroups = [
+  ...(latestInvygoGroup?.allGroups || []),
+  ...(monthlyClosedGroup?.allGroups || [])
+];
+
+const selectedClosedGroups = allClosedGroups.filter(
+  group => formatInvygoDate(group.date) === selectedDate
+);
 
   return (
 
@@ -250,7 +344,6 @@ export default function DailyBookingReport() {
         maxWidth: 500
       }}>
         🚗 Rented Cars Report
-d0c31bd (Add server.js with MongoDB integration)
       </div>
 
       <div style={{ marginBottom: 18, textAlign: "center" }}>
@@ -306,8 +399,10 @@ d0c31bd (Add server.js with MongoDB integration)
               marginTop: 4,
               display: "inline-block"
             }}>
-              Total of Cars 📦
+              Total of Cars 📦( Invygo)
+              
             </div>
+            
           </div>
           <table style={{ borderCollapse: "collapse", width: "100%", marginBottom: 8 }}>
             <thead>
@@ -331,6 +426,100 @@ d0c31bd (Add server.js with MongoDB integration)
               </tr>
             </tbody>
           </table>
+          {/* ✅ جدول الفئات Open Contracts */}
+<div style={{
+  background: white,
+  padding: 16,
+  border: `1.5px solid ${purple}`,
+  borderRadius: 12,
+  minWidth: "320px",
+  maxWidth: 500,
+  flex: "1 1 40%",
+  boxShadow: '0 2px 12px #ffd60022',
+  marginTop: 32
+}}>
+  <div style={{ display: "flex", justifyContent: "center" }}>
+    <div style={{
+      background: purple,
+      color: yellow,
+      fontWeight: "bold",
+      fontSize: 17,
+      borderRadius: 24,
+      boxShadow: `0 2px 8px #ffd60044`,
+      border: `1.5px solid ${purple}`,
+      padding: "7px 22px",
+      marginBottom: 8,
+      marginTop: 4,
+      display: "inline-block"
+    }}>
+      Open Contracts 📋
+    </div>
+  </div>
+
+  <table style={{ borderCollapse: "collapse", width: "100%", marginBottom: 8 }}>
+    <thead>
+      <tr>
+        <th style={th}>Category</th>
+        <th style={th}>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style={td}>Invygo Monthly</td>
+        <td style={td}>
+          {
+            data.filter(row =>
+              /^\d+$/.test(String(row["Booking Number"] || "").trim())
+            ).length
+          }
+        </td>
+      </tr>
+      <tr>
+        <td style={td}>Monthly Customers</td>
+        <td style={td}>
+          {
+            data.filter(row =>
+              String(row["Booking Number"] ?? "").toLowerCase().includes("monthly")
+            ).length
+          }
+        </td>
+      </tr>
+      <tr>
+        <td style={td}>Leasing</td>
+        <td style={td}>
+          {
+            data.filter(row =>
+              String(row["Booking Number"] || "").toLowerCase().trim() === "leasing"
+            ).length
+          }
+        </td>
+      </tr>
+      <tr>
+        <td style={td}>Daily</td>
+        <td style={td}>
+          {
+            data.filter(row =>
+              String(row["Booking Number"] || "").toLowerCase().trim() === "daily"
+            ).length
+          }
+        </td>
+      </tr>
+      <tr>
+        <td style={th}><strong>TOTAL Rented Business Bay</strong></td>
+        <td style={th}>
+          <strong>
+            {
+              data.filter(row =>
+                Object.keys(row).length > 1 && row["Customer"] && row["Customer"]
+              ).length
+            }
+          </strong>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
         </div>
 
         {/* العمود الأيمن: Booked Cars فوق، تحته INVYGO Closed Contracts */}
@@ -379,13 +568,68 @@ d0c31bd (Add server.js with MongoDB integration)
                 </tr>
               </thead>
               <tbody>
-                {filteredByDate.map((row, idx) => (
-                  <tr key={idx}>
-                    <td style={td}>{row["Model"]}</td>
-                    <td style={td}>{row["INVYGO"]}</td>
-                  </tr>
-                ))}
-              </tbody>
+  {filteredByDate.map((row, idx) => {
+    const bookingRaw = String(row["Booking Number"] || "").trim().toLowerCase();
+
+    let type = "Unknown";
+    if (/^\d+$/.test(bookingRaw)) {
+      type = "Invygo";
+    } else if (bookingRaw === "daily") {
+      type = "Daily";
+    } else if (bookingRaw === "leasing") {
+      type = "Leasing";
+    } else if (bookingRaw.includes("monthly")) {
+      type = "Monthly";
+    }
+
+    const getBookingColor = (type) => {
+      switch (type.toLowerCase()) {
+        case "invygo": return "#0D47A1";
+        case "monthly": return "#4A148C";
+        case "daily": return "#EF6C00";
+        case "leasing": return "#2E7D32";
+        default: return "#999";
+      }
+    };
+
+    const color = getBookingColor(type);
+
+    return (
+      <tr
+        key={idx}
+        onClick={() => {
+          setSelectedRow(row);
+          setCurrentList(filteredByDate);
+          setCurrentIndex(idx);
+          setRowSource("booked");
+          setShowModal(true);
+        }}
+        style={{ cursor: "pointer", backgroundColor: "#f9f9f9" }}
+      >
+        <td style={{ ...td, textAlign: 'center' }}>
+          <div style={{ display: 'inline-flex', gap: '16px', alignItems: 'center', justifyContent: 'center' }}>
+            <span>{row["Model"]}</span>
+            <span style={{
+              border: `1.5px solid ${color}`,
+              color: color,
+              padding: "2px 10px",
+              borderRadius: "12px",
+              fontSize: "12px",
+              fontWeight: "bold",
+              whiteSpace: "nowrap"
+            }}>
+              {type}
+            </span>
+          </div>
+        </td>
+        <td style={td}>{row["INVYGO"]}</td>
+      </tr>
+    );
+  })}
+</tbody>
+
+
+              
             </table>
           </div>
 
@@ -426,19 +670,66 @@ d0c31bd (Add server.js with MongoDB integration)
                 </tr>
               </thead>
               <tbody>
-                {selectedInvygoGroups.length > 0 && selectedInvygoGroups[0].contracts.length > 0 ? (
-                  selectedInvygoGroups[0].contracts.map((row, idx) => (
-                    <tr key={idx}>
-                      <td style={td}>{row[5] || ""}</td>
-                      <td style={td}>{row[4] || ""}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td style={td} colSpan={2}>No closed contracts for this date.</td>
-                  </tr>
-                )}
-              </tbody>
+  {selectedClosedGroups.length > 0 ? (
+    selectedClosedGroups.map((group, gIdx) => {
+      return group.contracts.map((row, idx) => {
+        const bookingRaw = String(row[1] || '').trim().toLowerCase();
+
+        let type = "Unknown";
+        if (/^\d+$/.test(bookingRaw)) {
+          type = "Invygo";
+        } else if (bookingRaw === "daily") {
+          type = "Daily";
+        } else if (bookingRaw === "leasing") {
+          type = "Leasing";
+        } else if (bookingRaw.includes("monthly")) {
+          type = "Monthly";
+        }
+
+        const bookingColor = getBookingColor(type);
+        const model = row[5] || "";
+        const plate = row[4] || "";
+
+        const rowData = {};
+        invygoClosedColumns.forEach((col, i) => {
+          rowData[col] = row[i] || "";
+        });
+
+        return (
+          <tr
+            key={`row-${gIdx}-${idx}`}
+            onClick={() => {
+              setSelectedRow(rowData);
+              setCurrentList(
+                group.contracts.map(r => {
+                  const obj = {};
+                  invygoClosedColumns.forEach((col, i) => {
+                    obj[col] = r[i] || "";
+                  });
+                  return obj;
+                })
+              );
+              setCurrentIndex(idx);
+              setRowSource("closed");
+              setShowModal(true);
+            }}
+            style={{ cursor: "pointer", backgroundColor: "#fdfbe3" }}
+          >
+            <td style={td}>
+              {model} <span style={{ border: `1px solid ${bookingColor}`, padding: "2px 6px", borderRadius: 8, marginLeft: 6, fontSize: "12px", fontWeight: "bold", color: bookingColor }}>{type}</span>
+            </td>
+            <td style={td}>{plate}</td>
+          </tr>
+        );
+      });
+    })
+  ) : (
+    <tr>
+      <td style={td} colSpan={2}>No closed contracts for this date.</td>
+    </tr>
+  )}
+</tbody>
+
             </table>
           </div>
         </div>
@@ -491,7 +782,7 @@ d0c31bd (Add server.js with MongoDB integration)
                       padding: "12px 0"
                     }}
                   >
-                    Date: {selectedInvygoGroups.length > 0 ? selectedInvygoGroups[0].date : selectedDate}
+                    Date: {selectedClosedGroups.length > 0 ? selectedClosedGroups[0].date : selectedDate}
                   </th>
                 </tr>
                 <tr>
@@ -501,25 +792,25 @@ d0c31bd (Add server.js with MongoDB integration)
                 </tr>
               </thead>
               <tbody>
-                {selectedInvygoGroups.length > 0 ? (
-                  selectedInvygoGroups.map((group, gIdx) => (
-                    <>
-                      {group.contracts.length > 0 ? (
-                        group.contracts.map((row, idx) => (
-                          <tr key={`row-${gIdx}-${idx}`}>
-                            {invygoClosedColumns.map((_, i) => (
-                              <td key={i} style={td}>{row[i] || ""}</td>
-                            ))}
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          {invygoClosedColumns.map((_, idx) => (
-                            <td key={idx} style={td}></td>
-                          ))}
-                        </tr>
-                      )}
-                    </>
+                {selectedClosedGroups.length > 0 ? (
+                  selectedClosedGroups.map((group, gIdx) => (
+  <React.Fragment key={`group-${gIdx}`}>
+    {group.contracts.length > 0 ? (
+      group.contracts.map((row, idx) => (
+        <tr key={`row-${gIdx}-${idx}`}>
+          {invygoClosedColumns.map((_, i) => (
+            <td key={`col-${i}`} style={td}>{row[i] || ""}</td>
+          ))}
+        </tr>
+      ))
+    ) : (
+      <tr key={`empty-${gIdx}`}>
+        {invygoClosedColumns.map((_, idx) => (
+          <td key={`col-${idx}`} style={td}></td>
+        ))}
+      </tr>
+    )}
+  </React.Fragment>
                   ))
                 ) : (
                   <tr>
@@ -531,6 +822,141 @@ d0c31bd (Add server.js with MongoDB integration)
           </div>
         )}
       </div>
+{showModal && selectedRow && (
+  <div
+    onClick={() => setShowModal(false)}
+    style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      backgroundColor: "rgba(0,0,0,0.5)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 9999
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        background: "#fffbea",
+        padding: "24px",
+        borderRadius: "16px",
+        maxWidth: "600px",
+        width: "90%",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+        border: "2px solid #800080",
+        fontFamily: "'Segoe UI', sans-serif",
+        textAlign: "center" // يجعل النصوص في المنتصف
+      }}
+    >
+      <button
+        onClick={() => setShowModal(false)}
+        style={{
+          position: "absolute",
+          top: 12,
+          right: 12,
+          background: "transparent",
+          border: "none",
+          fontSize: 24,
+          cursor: "pointer",
+          color: "#800080"
+        }}
+      >
+        ×
+      </button>
+
+      {/* العنوان الرئيسي */}
+      <div style={{
+  backgroundColor: "#800080",
+  color: "#fff",
+  fontWeight: "bold",
+  fontSize: "18px",
+  padding: "10px 24px",
+  borderRadius: "30px",
+  display: "inline-block",
+  marginBottom: "24px",
+  textAlign: "center"
+}}>
+  {rowSource === "closed" ? "📂 Closed Contract Details" : "📋 Booking Details"}
+</div>
+
+
+      {/* الجدول */}
+      <table style={{
+        width: "100%",
+        borderCollapse: "collapse",
+        border: "2px solid #800080"
+      }}>
+        <thead>
+          <tr style={{ backgroundColor: "#FFD700" }}>
+            <th style={{
+              padding: "12px",
+              border: "1px solid #800080",
+              color: "#800080",
+              fontWeight: "bold",
+              textAlign: "center"
+            }}>
+              Category
+            </th>
+            <th style={{
+              padding: "12px",
+              border: "1px solid #800080",
+              color: "#800080",
+              fontWeight: "bold",
+              textAlign: "center"
+            }}>
+              Details
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(selectedRow)
+            .filter(([_, value]) => value !== null && value !== undefined && value !== "")
+            .map(([key, value], i) => (
+              <tr key={i} style={{ backgroundColor: i % 2 === 0 ? "#ffffff" : "#fff7d1" }}>
+                <td style={{
+                  padding: "12px",
+                  border: "1px solid #800080",
+                  color: "#333",
+                  fontWeight: "500",
+                  textAlign: "center",
+                  verticalAlign: "middle"
+                }}>
+                  {key}
+                </td>
+                <td style={{
+                  padding: "12px",
+                  border: "1px solid #800080",
+                  color: "#222",
+                  textAlign: "center",
+                  verticalAlign: "middle"
+                }}>
+                  {value}
+                </td>
+              </tr>
+            ))}
+        </tbody>
+        <tfoot>
+          <tr style={{ backgroundColor: "#FFD700" }}>
+            <td colSpan={2} style={{
+              padding: "12px",
+              textAlign: "center",
+              fontWeight: "bold",
+              color: "#800080",
+              border: "1px solid #800080"
+            }}>
+              ✅ End of Booking Info
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+)}
+
 
       <div style={{ position: "absolute", top: 40, left: 20 }}>
         <a

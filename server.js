@@ -6,7 +6,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-const uri = process.env.MONGO_URI;
+const uri = "mongodb+srv://moalamir52:Moh%40med%212020@moalamir.vxoug6o.mongodb.net/?retryWrites=true&w=majority&appName=moalamir";
 const client = new MongoClient(uri);
 const dbName = 'contracts';
 
@@ -37,6 +37,4 @@ app.get('/load', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`✅ API running on port ${PORT}`));
-
+app.listen(4000, () => console.log('✅ API running on http://localhost:4000'));
