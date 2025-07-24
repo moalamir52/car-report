@@ -332,11 +332,16 @@ if (
   const handleInvygoUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      setError('❌ Please upload a CSV file.');
+      return;
+    }
     setInvygoFileName(file.name);
 
     try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array' });
+      const text = await file.text();
+      // استخدم XLSX لقراءة CSV
+      const workbook = XLSX.read(text, { type: 'string' });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const invygoData = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
@@ -361,7 +366,7 @@ if (
       localStorage.setItem('contracts_file_data', JSON.stringify(updated));
     } catch (err) {
       console.error('Error processing INVYGO file:', err);
-      setError('❌ Failed to process INVYGO file.');
+      setError('❌ Failed to process INVYGO CSV file.');
     }
   };
 
@@ -406,7 +411,13 @@ if (
           if (val && String(val).trim().toLowerCase().startsWith('c')) {
             return 'Leasing';
           }
-          return val || 'Monthly';
+          if (!val) {
+            if (row['Drop-off Date'] && isDailyContract(row['Pick-up Date'], row['Drop-off Date'])) {
+              return 'Daily';
+            }
+            return 'Monthly';
+          }
+          return val;
         }
         if (colKey === 'Pick-up Date') {
           return formatToDDMMYYYY(row['Pick-up Date']);
@@ -455,7 +466,13 @@ if (
           if (val && String(val).trim().toLowerCase().startsWith('c')) {
             return 'Leasing';
           }
-          return val || 'Monthly';
+          if (!val) {
+            if (row['Drop-off Date'] && isDailyContract(row['Pick-up Date'], row['Drop-off Date'])) {
+              return 'Daily';
+            }
+            return 'Monthly';
+          }
+          return val;
         }
         if (colKey === 'Pick-up Date') {
           return formatToDDMMYYYY(row['Pick-up Date']);
@@ -484,7 +501,15 @@ if (
       'Pick-up Date',
       'Phone Number'
     ];
-    const filtered = data.filter(row => !isInvygo(row['Booking Number']));
+    const filtered = data.filter(row => {
+      const booking = row['Booking Number'];
+      // استبعد Invygo
+      if (isInvygo(booking)) return false;
+      // استبعد Leasing, Monthly, Daily
+      const val = booking ? booking.toString().trim().toLowerCase() : '';
+      if (val === 'leasing' || val === 'monthly' || val === 'daily') return false;
+      return true;
+    });
     if (!filtered.length) {
       setCopyToast('No non-Invygo rows to copy!');
       setTimeout(() => setCopyToast(''), 1500);
@@ -497,7 +522,13 @@ if (
           if (val && String(val).trim().toLowerCase().startsWith('c')) {
             return 'Leasing';
           }
-          return val || 'Monthly';
+          if (!val) {
+            if (row['Drop-off Date'] && isDailyContract(row['Pick-up Date'], row['Drop-off Date'])) {
+              return 'Daily';
+            }
+            return 'Monthly';
+          }
+          return val;
         }
         if (colKey === 'Pick-up Date') {
           return formatToDDMMYYYY(row['Pick-up Date']);
@@ -513,6 +544,7 @@ if (
 
   // 2. أضف حالة توست (تنبيه مؤقت)
   const [copyToast, setCopyToast] = useState('');
+  const [copiedContractNo, setCopiedContractNo] = useState(null);
 
   useEffect(() => {
     const table = tableRef.current;
@@ -650,6 +682,38 @@ if (
     }
   };
 
+  // دالة لتحويل نص التاريخ إلى كائن Date بشكل صحيح
+  function parseDateString(dateStr) {
+    if (!dateStr) return null;
+    if (dateStr instanceof Date) return dateStr;
+    // إزالة الوقت إذا موجود
+    let [datePart] = dateStr.split(' ');
+    // استبدال الفواصل
+    datePart = datePart.replace(/\./g, '-').replace(/\//g, '-');
+    const parts = datePart.split('-');
+    if (parts.length === 3) {
+      // dd-MM-yyyy أو yyyy-MM-dd
+      if (parts[2].length === 4) {
+        // dd-MM-yyyy
+        return new Date(`${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`);
+      } else if (parts[0].length === 4) {
+        // yyyy-MM-dd
+        return new Date(`${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`);
+      }
+    }
+    // fallback
+    return new Date(dateStr);
+  }
+
+  // دالة تتحقق إذا كان العقد Daily بناءً على الفرق بين التاريخين
+  function isDailyContract(pickup, dropoff) {
+    const start = parseDateString(pickup);
+    const end = parseDateString(dropoff);
+    if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) return false;
+    const diffDays = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays < 10 && diffDays >= 0;
+  }
+
   const renderTable = (data) => (
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -712,22 +776,39 @@ if (
                 <td style={td}>{index + 1}</td>
                 {/* عدل هنا: عند الضغط على رقم العقد يتم نسخه */}
                 <td
-                  style={{ ...td, cursor: 'pointer', color: '#1976d2', textDecoration: 'underline' }}
+                  style={{
+                    ...td,
+                    cursor: 'pointer',
+                    color: copiedContractNo === item['Contract No.'] ? '#388e3c' : '#1976d2', // أخضر أو أزرق
+                    textDecoration: 'underline',
+                    background: copiedContractNo === item['Contract No.'] ? '#c8e6c9' : 'inherit' // خلفية خضراء فاتحة عند النسخ
+                  }}
                   onClick={() => {
                     if (item['Contract No.']) {
                       navigator.clipboard.writeText(item['Contract No.'].toString());
-                      setCopyToast('تم نسخ رقم العقد!');
+                      setCopiedContractNo(item['Contract No.']);
+                      setCopyToast('Contract Number Copied!');
                       setTimeout(() => setCopyToast(''), 1200);
                     }
                   }}
-                  title="اضغط لنسخ رقم العقد"
+                  title="Click to copy contract number"
                 >
                   {item['Contract No.']}
                 </td>
                 <td style={td}>
                   {item['Booking Number'] && item['Booking Number'].toString().trim().toLowerCase().startsWith('c')
                     ? 'Leasing'
-                    : (item['Booking Number'] || 'Monthly')}
+                    : (
+                        (item['Booking Number'] === undefined || item['Booking Number'] === null || item['Booking Number'].toString().trim() === '')
+                          ? (
+                              item['Drop-off Date']
+                                ? (isDailyContract(item['Pick-up Date'], item['Drop-off Date'])
+                                    ? 'Daily'
+                                    : 'Monthly')
+                                : 'Open'
+                            )
+                          : item['Booking Number']
+                      )}
                 </td>
                 <td style={td}>{item['Customer']}</td>
                 <td style={td}>{item['Pick-up Branch']}</td>
@@ -895,7 +976,7 @@ if (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '18px' }}>
   <div>
     <label style={{ fontSize: '15px', fontWeight: '600', color: purpleDark }}>Upload INVYGO File</label><br />
-    <input type="file" accept=".xlsx,.csv" onChange={handleInvygoUpload} style={inputStyle} />
+    <input type="file" accept=".csv" onChange={handleInvygoUpload} style={inputStyle} />
     {/* حذف زر + */}
   </div>
 
@@ -1010,65 +1091,105 @@ if (
       <thead>
         <tr style={{ background: yellow, color: purpleDark }}>
           <th style={th}>#</th>
-          <th style={th}>Contract</th>
-          <th style={th}>Status</th>
-          <th style={th}>Location</th>
-          <th style={th}>Result</th>
+          <th style={th}>Contract No.</th>
+          <th style={th}>Booking Number</th>
+          <th style={th}>Customer</th>
+          <th style={th}>Pick-up Branch</th>
+          <th style={th}>Plate No.</th>
+          <th style={th}>Model</th>
+          <th style={th}>Pick-up Date</th>
+          <th style={th}>Phone Number</th>
+          <th style={th}>Expected Action Date</th>
         </tr>
       </thead>
       <tbody>
         {contractCheckResults
+  .filter(r => r.result !== '✅ OK')
   .filter((r) =>
     r.contract.toLowerCase().includes(checkFilter.toLowerCase()) ||
     r.status.toLowerCase().includes(checkFilter.toLowerCase()) ||
     r.location.toLowerCase().includes(checkFilter.toLowerCase()) ||
     r.result.toLowerCase().includes(checkFilter.toLowerCase())
   )
-  .map((r, i) => (
-  <tr
-    key={i}
-    style={{
-      cursor: '',
-      backgroundColor:
-        r.result.trim() === '❌ Error' ? '#ffcdd2' :
-        r.result.includes('❌') ? '#fbe9e7' :
-        'white'
-    }}
-  >
-    <td style={td}>{i + 1}</td>
-
-    <td
-      style={{ ...td, cursor: 'pointer', textDecoration: '' }}
-      onClick={() => navigator.clipboard.writeText(r.contract)}
-      title="Click to copy"
-    >
-      {r.contract}
-    </td>
-
-    <td
-      style={{ ...td, cursor: 'pointer', textDecoration: 'underline' }}
-      onClick={(e) => {
-        e.stopPropagation(); // تمنع تأثير الضغط على الصف كله
-        const fullData = fileData.find(f =>
-          (f['Contract No.'] || f['Agreement'])?.toString().trim().toLowerCase() === r.contract
-        );
-        setSelectedContract({ ...r, ...fullData });
-        setShowModal(true);
-      }}
-      title="عرض تفاصيل العقد"
-    >
-      {r.status}
-    </td>
-
-    <td style={td}>{r.location}</td>
-
-    <td style={{ ...td, fontWeight: 'bold', color: r.result.includes('✅') ? 'green' : 'red' }}>
-      {r.result}
-    </td>
-  </tr>
-
-  ))}
-
+  .map((r, i) => {
+    const fullData = fileData.find(f =>
+      (f['Contract No.'] || f['Agreement'])?.toString().trim().toLowerCase() === r.contract
+    ) || {};
+    let expectedAction = '';
+    if (r.result.trim() === '❌ Error') {
+      expectedAction = 'Should be removed from Open Contract';
+    } else if (r.status.toLowerCase().includes('close') && r.result.includes('Missing')) {
+      if (fullData['Drop-off Date']) {
+        expectedAction = `Should be closed on ${formatToDDMMYYYY(fullData['Drop-off Date'])}`;
+      }
+    } else if (r.status.toLowerCase().includes('open') && r.result.includes('Missing')) {
+      if (fullData['Pick-up Date']) {
+        expectedAction = `Should be opened on ${formatToDDMMYYYY(fullData['Pick-up Date'])}`;
+      }
+    }
+    // النسخ مع تكرار Plate No. وModel
+    const rowToCopy = [
+      r.contract,
+      fullData['Booking Number'] ?? '',
+      fullData['Customer'] ?? '',
+      fullData['Pick-up Branch'] ?? '',
+      fullData['Plate No.'] ?? '',
+      fullData['Model'] ?? '',
+      fullData['Plate No.'] ?? '',
+      fullData['Model'] ?? '',
+      formatToDDMMYYYY(fullData['Pick-up Date']) ?? '',
+      fullData['Phone Number'] ?? ''
+    ].join('\t');
+    return (
+      <tr
+        key={i}
+        style={{
+          backgroundColor:
+            r.result.trim() === '❌ Error' ? '#ffcdd2' :
+            r.result.includes('❌') ? '#fbe9e7' :
+            'white'
+        }}
+      >
+        <td style={{ ...td, cursor: 'pointer', color: '#1976d2', textDecoration: 'underline' }}
+          onClick={() => {
+            navigator.clipboard.writeText(rowToCopy);
+            setCopiedContractNo(r.contract);
+            setCopyToast('Row copied!');
+            setTimeout(() => setCopyToast(''), 1200);
+          }}
+          title="Click to copy row"
+        >
+          {i + 1}
+        </td>
+        <td style={{ ...td, cursor: 'pointer', color: copiedContractNo === r.contract ? '#388e3c' : '#1976d2', background: copiedContractNo === r.contract ? '#c8e6c9' : 'inherit' }}
+          onClick={() => {
+            navigator.clipboard.writeText(r.contract);
+            setCopiedContractNo(r.contract);
+          }}
+          title="Click to copy contract number"
+        >
+          {r.contract}
+        </td>
+        <td style={td}>{fullData['Booking Number']}</td>
+        <td style={td}
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedContract({ ...r, ...fullData });
+            setShowModal(true);
+          }}
+          title="Show contract details"
+        >
+          {fullData['Customer']}
+        </td>
+        <td style={td}>{fullData['Pick-up Branch']}</td>
+        <td style={td}>{fullData['Plate No.']}</td>
+        <td style={td}>{fullData['Model']}</td>
+        <td style={td}>{formatToDDMMYYYY(fullData['Pick-up Date'])}</td>
+        <td style={td}>{fullData['Phone Number']}</td>
+        <td style={{ ...td, fontWeight: 'bold', color: '#d32f2f' }}>{expectedAction}</td>
+      </tr>
+    );
+  })}
       </tbody>
     </table>
   </div>

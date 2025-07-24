@@ -273,6 +273,22 @@ const countByModel = (rawData: any[]): Record<string, number> => {
     return grouped;
   })();
 
+  // دالة لعرض العقود المفتوحة حسب الفئة (Invygo, Monthly, Leasing, Daily)
+  const handleOpenContractsClick = (category) => {
+    let filtered = [];
+    if (category === 'Invygo') {
+      filtered = data.filter(row => /^\d+$/.test(String(row["Booking Number"] || "").trim()));
+    } else if (category === 'Monthly') {
+      filtered = data.filter(row => String(row["Booking Number"] ?? "").toLowerCase().includes("monthly"));
+    } else if (category === 'Leasing') {
+      filtered = data.filter(row => String(row["Booking Number"] || "").toLowerCase().trim() === "leasing");
+    } else if (category === 'Daily') {
+      filtered = data.filter(row => String(row["Booking Number"] || "").toLowerCase().trim() === "daily");
+    }
+    setCurrentList(filtered);
+    setShowModal(true);
+  };
+
   // الأعمدة المطلوبة بالترتيب الفعلي في ملفك
   const invygoClosedColumns = [
     "Contract No.",
@@ -326,6 +342,36 @@ const countByModel = (rawData: any[]): Record<string, number> => {
 const selectedClosedGroups = allClosedGroups.filter(
   group => formatInvygoDate(group.date) === selectedDate
 );
+
+  const preferredOrder = [
+    "Mitsubishi Attrage",
+    "Geely Emgrand 2024",
+    "MG 5 2024",
+    "MG 5 2025",
+    "Kia Pegas 2024",
+    "Chery Tiggo 2025",
+    "Peugeot 2008 2025",
+    "Peugeot 208 2025",
+    "Peugeot 408 2025/2026",
+    "Chery Arrizo 5 2025",
+    "Peugeot 2008 Active 2025"
+  ];
+
+  // رسالة النسخ
+  const [copyMsg, setCopyMsg] = useState("");
+  const showCopyMsg = (msg) => {
+    setCopyMsg(msg);
+    setTimeout(() => setCopyMsg(""), 1200);
+  };
+  // دالة نسخ نص
+  const copyToClipboard = async (text, msg = "Copied!") => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showCopyMsg(msg);
+    } catch {
+      showCopyMsg("Copy failed");
+    }
+  };
 
   return (
 
@@ -412,12 +458,21 @@ const selectedClosedGroups = allClosedGroups.filter(
               </tr>
             </thead>
             <tbody>
-              {Object.entries(allCarCount).map(([model, count], idx) => (
-                <tr key={idx}>
-                  <td style={td}>{model}</td>
-                  <td style={td}>{count}</td>
-                </tr>
-              ))}
+              {Object.entries(allCarCount)
+                .sort(([modelA], [modelB]) => {
+                  const idxA = preferredOrder.indexOf(modelA);
+                  const idxB = preferredOrder.indexOf(modelB);
+                  if (idxA === -1 && idxB === -1) return modelA.localeCompare(modelB);
+                  if (idxA === -1) return 1;
+                  if (idxB === -1) return -1;
+                  return idxA - idxB;
+                })
+                .map(([model, count], idx) => (
+                  <tr key={idx}>
+                    <td style={td}>{model}</td>
+                    <td style={{...td, cursor: 'pointer', color: '#0D47A1', fontWeight: 'bold'}} onClick={() => handleModelCountClick(model)}>{count}</td>
+                  </tr>
+                ))}
               <tr>
                 <td style={th}><strong>TOTAL</strong></td>
                 <td style={th}>
@@ -466,7 +521,7 @@ const selectedClosedGroups = allClosedGroups.filter(
     <tbody>
       <tr>
         <td style={td}>Invygo Monthly</td>
-        <td style={td}>
+        <td style={{...td, cursor: 'pointer', color: '#0D47A1', fontWeight: 'bold'}} onClick={() => handleOpenContractsClick('Invygo')}>
           {
             data.filter(row =>
               /^\d+$/.test(String(row["Booking Number"] || "").trim())
@@ -476,7 +531,7 @@ const selectedClosedGroups = allClosedGroups.filter(
       </tr>
       <tr>
         <td style={td}>Monthly Customers</td>
-        <td style={td}>
+        <td style={{...td, cursor: 'pointer', color: '#4A148C', fontWeight: 'bold'}} onClick={() => handleOpenContractsClick('Monthly')}>
           {
             data.filter(row =>
               String(row["Booking Number"] ?? "").toLowerCase().includes("monthly")
@@ -486,7 +541,7 @@ const selectedClosedGroups = allClosedGroups.filter(
       </tr>
       <tr>
         <td style={td}>Leasing</td>
-        <td style={td}>
+        <td style={{...td, cursor: 'pointer', color: '#2E7D32', fontWeight: 'bold'}} onClick={() => handleOpenContractsClick('Leasing')}>
           {
             data.filter(row =>
               String(row["Booking Number"] || "").toLowerCase().trim() === "leasing"
@@ -496,7 +551,7 @@ const selectedClosedGroups = allClosedGroups.filter(
       </tr>
       <tr>
         <td style={td}>Daily</td>
-        <td style={td}>
+        <td style={{...td, cursor: 'pointer', color: '#EF6C00', fontWeight: 'bold'}} onClick={() => handleOpenContractsClick('Daily')}>
           {
             data.filter(row =>
               String(row["Booking Number"] || "").toLowerCase().trim() === "daily"
@@ -956,6 +1011,126 @@ const selectedClosedGroups = allClosedGroups.filter(
     </div>
   </div>
 )}
+
+      {showModal && currentList && (
+        <div
+          onClick={() => setShowModal(false)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100vw",
+            height: "100vh",
+            backgroundColor: "rgba(0,0,0,0.5)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 9999
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: "#fffbea",
+              padding: "24px 12px 24px 12px",
+              borderRadius: "16px",
+              maxWidth: "1200px",
+              width: "98vw",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+              border: "2px solid #800080",
+              fontFamily: "'Segoe UI', sans-serif",
+              textAlign: "center",
+              position: "relative"
+            }}
+          >
+            <button
+              onClick={() => setShowModal(false)}
+              style={{
+                position: "absolute",
+                top: 12,
+                right: 12,
+                background: "transparent",
+                border: "none",
+                fontSize: 24,
+                cursor: "pointer",
+                color: "#800080"
+              }}
+            >
+              ×
+            </button>
+            <div style={{
+              backgroundColor: "#800080",
+              color: "#fff",
+              fontWeight: "bold",
+              fontSize: "18px",
+              padding: "10px 24px",
+              borderRadius: "30px",
+              display: "inline-block",
+              marginBottom: "24px",
+              textAlign: "center"
+            }}>
+              Open Contracts for this Model
+            </div>
+            <div style={{overflowX: 'auto', padding: '0 2px 0 2px', position: 'relative'}}>
+              {copyMsg && (
+                <div style={{
+                  position: 'absolute',
+                  top: 8,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  background: '#800080',
+                  color: '#fff',
+                  padding: '6px 18px',
+                  borderRadius: 16,
+                  fontWeight: 'bold',
+                  fontSize: 15,
+                  zIndex: 10000,
+                  boxShadow: '0 2px 8px #80008044',
+                  pointerEvents: 'none',
+                  opacity: 0.95
+                }}>{copyMsg}</div>
+              )}
+              {currentList.length > 0 ? (
+                <table style={{ width: "100%", borderCollapse: "collapse", border: "2px solid #800080", fontSize: '13px', minWidth: '900px' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: "#FFD700" }}>
+                      <th style={{ padding: "8px", border: "1px solid #800080", color: "#800080", fontWeight: "bold", textAlign: "center", background: '#fffbe7', position: 'sticky', top: 0, cursor: 'pointer' }}
+                        onClick={() => copyToClipboard(currentList.map((row, i) => Object.entries(row).filter(([key]) => key.toLowerCase() !== 'replacement').map(([_, value]) => value).join('\t')).join('\n'), 'All rows copied!')}
+                      >#</th>
+                      {Object.keys(currentList[0]).filter(key => key.toLowerCase() !== 'replacement').map((key, i) => (
+                        <th key={i} style={{ padding: "8px", border: "1px solid #800080", color: "#800080", fontWeight: "bold", textAlign: "center", background: '#fffbe7', position: 'sticky', top: 0 }}>{key}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentList.map((row, i) => (
+                      <tr key={i} style={{ backgroundColor: i % 2 === 0 ? "#ffffff" : "#fff7d1", borderBottom: '1px solid #e0e0e0' }}>
+                        <td
+                          style={{ padding: "8px 4px", border: "1px solid #e0e0e0", color: "#800080", textAlign: "center", verticalAlign: "middle", fontWeight: 'bold', cursor: 'pointer', background: '#f3eaff' }}
+                          onClick={() => copyToClipboard(Object.entries(row).filter(([key]) => key.toLowerCase() !== 'replacement').map(([_, value]) => value).join('\t'), 'Row copied!')}
+                          title="Copy whole row"
+                        >{i + 1}</td>
+                        {Object.entries(row).filter(([key]) => key.toLowerCase() !== 'replacement').map(([_, value], j) => (
+                          <td
+                            key={j}
+                            style={{ padding: "8px 4px", border: "1px solid #e0e0e0", color: "#222", textAlign: "center", verticalAlign: "middle", whiteSpace: 'nowrap', cursor: 'pointer' }}
+                            onClick={() => copyToClipboard(String(value))}
+                            title="Copy cell"
+                          >{value}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div style={{ color: "#800080", fontWeight: "bold", margin: "24px 0" }}>No open contracts for this model.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
 
       <div style={{ position: "absolute", top: 40, left: 20 }}>
