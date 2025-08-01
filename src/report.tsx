@@ -265,8 +265,11 @@ const countByModel = (rawData: any[]): Record<string, number> => {
   const allCarCount = (() => {
     const grouped = {};
     data.forEach((row) => {
-      const booking = row["Booking Number"] || "";
-      if (!booking || isNaN(Number(booking))) return;
+      let booking = row["Booking Number"];
+      if (!booking) return;
+      booking = String(booking).trim();
+      if (!booking.match(/^\d+$/)) return;
+      // تم حذف سطر الطباعة
       let model = unifiedModelName(row["Model"]);
       grouped[model] = (grouped[model] || 0) + 1;
     });
@@ -286,6 +289,18 @@ const countByModel = (rawData: any[]): Record<string, number> => {
       filtered = data.filter(row => String(row["Booking Number"] || "").toLowerCase().trim() === "daily");
     }
     setCurrentList(filtered);
+    setSelectedRow(null); // مهم لمنع تعارض النوافذ
+    setShowModal(true);
+  };
+
+  const handleModelCountClick = (model) => {
+    // تصفية العقود المفتوحة حسب الموديل الموحد وشرط انفيجو فقط
+    const filtered = data.filter(row =>
+      unifiedModelName(row['Model']) === model &&
+      String(row["Booking Number"] || "").trim().match(/^\d+$/)
+    );
+    setCurrentList(filtered);
+    setSelectedRow(null); // مهم لمنع تعارض النوافذ
     setShowModal(true);
   };
 
@@ -654,8 +669,7 @@ const selectedClosedGroups = allClosedGroups.filter(
         key={idx}
         onClick={() => {
           setSelectedRow(row);
-          setCurrentList(filteredByDate);
-          setCurrentIndex(idx);
+          setCurrentList(null); // مهم لمنع تعارض النوافذ
           setRowSource("booked");
           setShowModal(true);
         }}
@@ -755,16 +769,7 @@ const selectedClosedGroups = allClosedGroups.filter(
             key={`row-${gIdx}-${idx}`}
             onClick={() => {
               setSelectedRow(rowData);
-              setCurrentList(
-                group.contracts.map(r => {
-                  const obj = {};
-                  invygoClosedColumns.forEach((col, i) => {
-                    obj[col] = r[i] || "";
-                  });
-                  return obj;
-                })
-              );
-              setCurrentIndex(idx);
+              setCurrentList(null); // مهم لمنع تعارض النوافذ
               setRowSource("closed");
               setShowModal(true);
             }}
@@ -879,7 +884,11 @@ const selectedClosedGroups = allClosedGroups.filter(
       </div>
 {showModal && selectedRow && (
   <div
-    onClick={() => setShowModal(false)}
+    onClick={() => {
+      setShowModal(false);
+      setSelectedRow(null);
+      setCurrentList(null);
+    }}
     style={{
       position: "fixed",
       top: 0,
@@ -1012,9 +1021,13 @@ const selectedClosedGroups = allClosedGroups.filter(
   </div>
 )}
 
-      {showModal && currentList && (
+      {showModal && currentList && !selectedRow && (
         <div
-          onClick={() => setShowModal(false)}
+          onClick={() => {
+            setShowModal(false);
+            setSelectedRow(null);
+            setCurrentList(null);
+          }}
           style={{
             position: "fixed",
             top: 0,
@@ -1097,9 +1110,9 @@ const selectedClosedGroups = allClosedGroups.filter(
                   <thead>
                     <tr style={{ backgroundColor: "#FFD700" }}>
                       <th style={{ padding: "8px", border: "1px solid #800080", color: "#800080", fontWeight: "bold", textAlign: "center", background: '#fffbe7', position: 'sticky', top: 0, cursor: 'pointer' }}
-                        onClick={() => copyToClipboard(currentList.map((row, i) => Object.entries(row).filter(([key]) => key.toLowerCase() !== 'replacement').map(([_, value]) => value).join('\t')).join('\n'), 'All rows copied!')}
+                        onClick={() => copyToClipboard(currentList.map((row, i) => Object.entries(row).filter(([key]) => key.toLowerCase() !== 'replacement' && key.toLowerCase() !== 'replacement date').map(([_, value]) => value).join('\t')).join('\n'), 'All rows copied!')}
                       >#</th>
-                      {Object.keys(currentList[0]).filter(key => key.toLowerCase() !== 'replacement').map((key, i) => (
+                      {Object.keys(currentList[0]).filter(key => key.toLowerCase() !== 'replacement' && key.toLowerCase() !== 'replacement date').map((key, i) => (
                         <th key={i} style={{ padding: "8px", border: "1px solid #800080", color: "#800080", fontWeight: "bold", textAlign: "center", background: '#fffbe7', position: 'sticky', top: 0 }}>{key}</th>
                       ))}
                     </tr>
@@ -1109,10 +1122,10 @@ const selectedClosedGroups = allClosedGroups.filter(
                       <tr key={i} style={{ backgroundColor: i % 2 === 0 ? "#ffffff" : "#fff7d1", borderBottom: '1px solid #e0e0e0' }}>
                         <td
                           style={{ padding: "8px 4px", border: "1px solid #e0e0e0", color: "#800080", textAlign: "center", verticalAlign: "middle", fontWeight: 'bold', cursor: 'pointer', background: '#f3eaff' }}
-                          onClick={() => copyToClipboard(Object.entries(row).filter(([key]) => key.toLowerCase() !== 'replacement').map(([_, value]) => value).join('\t'), 'Row copied!')}
+                          onClick={() => copyToClipboard(Object.entries(row).filter(([key]) => key.toLowerCase() !== 'replacement' && key.toLowerCase() !== 'replacement date').map(([_, value]) => value).join('\t'), 'Row copied!')}
                           title="Copy whole row"
                         >{i + 1}</td>
-                        {Object.entries(row).filter(([key]) => key.toLowerCase() !== 'replacement').map(([_, value], j) => (
+                        {Object.entries(row).filter(([key]) => key.toLowerCase() !== 'replacement' && key.toLowerCase() !== 'replacement date').map(([_, value], j) => (
                           <td
                             key={j}
                             style={{ padding: "8px 4px", border: "1px solid #e0e0e0", color: "#222", textAlign: "center", verticalAlign: "middle", whiteSpace: 'nowrap', cursor: 'pointer' }}
