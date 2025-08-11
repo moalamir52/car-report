@@ -45,9 +45,12 @@ const [contractCheckResults, setContractCheckResults] = useState([]);
       const invygoClosedURL = "https://gsx2json.com/api?id=1XwBko5v8zOdTdv-By8HK_DvZnYT2T12mBw_SIbCfMkE&sheet=Invygo%20Closed";
       const monthlyClosedURL = "https://gsx2json.com/api?id=1XwBko5v8zOdTdv-By8HK_DvZnYT2T12mBw_SIbCfMkE&sheet=Monthly%20Closed";
 
-      const resOpen = await fetch(openListURL).then(r => r.json());
-      const resInvygo = await fetch(invygoClosedURL).then(r => r.json());
-      const resMonthly = await fetch(monthlyClosedURL).then(r => r.json());
+      // ✅ Solution: Fetch all data in parallel to ensure stability and speed
+      const [resOpen, resInvygo, resMonthly] = await Promise.all([
+        fetch(openListURL).then(r => r.json()),
+        fetch(invygoClosedURL).then(r => r.json()),
+        fetch(monthlyClosedURL).then(r => r.json())
+      ]);
 
       const openList = new Set((resOpen.rows || []).map(r => normalize(r['Contract No.'])));
       const invygoList = new Set((resInvygo.rows || []).map(r => normalize(r['Contract No.'] || r['Agreement'])));
@@ -59,21 +62,21 @@ const [contractCheckResults, setContractCheckResults] = useState([]);
         if (!contract) return null;
 
         if (status.includes('close') || status.includes('delivered')) {
-          // ✅ استبعاد العقود القديمة المغلقة (عدى عليها أكثر من 6 شهور ومش موجودة في شيتات الإغلاق)
-const dropoffRaw = row['Drop-off Date'];
-const parsedDropoff = parseDateEjarFile(dropoffRaw);
-const sixMonthsAgo = new Date();
-sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+          // ✅ Exclude old closed contracts (older than 6 months and not in closure sheets)
+          const dropoffRaw = row['Drop-off Date'];
+          const parsedDropoff = parseDateEjarFile(dropoffRaw); // Make sure this function is defined in your code
+          const sixMonthsAgo = new Date();
+          sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-if (
-  parsedDropoff instanceof Date &&
-  !isNaN(parsedDropoff) &&
-  parsedDropoff < sixMonthsAgo &&
-  !invygoList.has(contract) &&
-  !monthlyList.has(contract)
-) {
-  return null; // 🧹 تجاهل العقد نهائيًا
-}
+          if (
+            parsedDropoff instanceof Date &&
+            !isNaN(parsedDropoff) &&
+            parsedDropoff < sixMonthsAgo &&
+            !invygoList.has(contract) &&
+            !monthlyList.has(contract)
+          ) {
+            return null; // 🧹 Ignore this contract completely
+          }
 
           if (openList.has(contract)) return { contract, status: 'Closed', location: '⚠️ Already in Open', result: '❌ Error' };
           if (invygoList.has(contract)) return { contract, status: 'Closed', location: '✅ Invygo Closed', result: '✅ OK' };
@@ -89,7 +92,7 @@ if (
       setContractCheckResults(output);
     } catch (err) {
       console.error("Error in contract check", err);
-      alert("❌ حصل خطأ أثناء الفحص");
+      alert("❌ An error occurred during the contract check. Please make sure you are connected to the internet and that the Google Sheets links are working.");
     } finally {
       setCheckingContracts(false);
     }
