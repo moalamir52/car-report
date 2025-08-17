@@ -97,10 +97,9 @@ export default function ContractsReport({ onBack }) {
       'Pick-up Branch',
       'Plate No.',
       'Model',
-      'Plate No.',
-      'Model',
       'Pick-up Date',
-      'Phone Number'
+      'Phone Number',
+      'Drop-off Date'
     ];
 
     const rows = data.map(row =>
@@ -118,9 +117,6 @@ export default function ContractsReport({ onBack }) {
           }
           return val;
         }
-        if (colKey === 'Pick-up Date') {
-          return formatToDDMMYYYY(row['Pick-up Date']);
-        }
         return row[colKey] ?? '';
       }).join('\t')
     );
@@ -133,7 +129,8 @@ export default function ContractsReport({ onBack }) {
   function isInvygo(val) {
     if (!val) return false;
     const str = String(val).trim();
-    return /^Vrd{1,6}$/.test(str);
+    // تحقق من أرقام Invygo - عادة تبدأ بـ VRD أو تحتوي على نمط معين
+    return str.toLowerCase().includes('vrd') || /^\d{6,}$/.test(str) || str.toLowerCase().includes('invygo');
   }
 
   const handleCopyInvygoOnly = () => {
@@ -146,12 +143,18 @@ export default function ContractsReport({ onBack }) {
       'Pick-up Branch',
       'Plate No.',
       'Model',
-      'Plate No.',
-      'Model',
       'Pick-up Date',
-      'Phone Number'
+      'Phone Number',
+      'Drop-off Date'
     ];
-    const filtered = data.filter(row => isInvygo(row['Booking Number']));
+    console.log('All booking numbers:', data.map(row => row['Booking Number']));
+    const filtered = data.filter(row => {
+      const booking = row['Booking Number'];
+      const result = isInvygo(booking);
+      console.log(`Booking: ${booking}, isInvygo: ${result}`);
+      return result;
+    });
+    console.log('Filtered Invygo rows:', filtered.length);
     if (!filtered.length) {
       setCopyToast('No Invygo rows to copy!');
       setTimeout(() => setCopyToast(''), 1500);
@@ -172,9 +175,6 @@ export default function ContractsReport({ onBack }) {
           }
           return val;
         }
-        if (colKey === 'Pick-up Date') {
-          return formatToDDMMYYYY(row['Pick-up Date']);
-        }
         return row[colKey] ?? '';
       }).join('\t')
     );
@@ -194,18 +194,19 @@ export default function ContractsReport({ onBack }) {
       'Pick-up Branch',
       'Plate No.',
       'Model',
-      'Plate No.',
-      'Model',
       'Pick-up Date',
-      'Phone Number'
+      'Phone Number',
+      'Drop-off Date'
     ];
     const filtered = data.filter(row => {
       const booking = row['Booking Number'];
+      // إذا كان Invygo، استبعده
       if (isInvygo(booking)) return false;
-      const val = booking ? booking.toString().trim().toLowerCase() : '';
-      if (val === 'leasing' || val === 'monthly' || val === 'daily') return false;
+      // كل شيء آخر (فارغ أو غير Invygo) يُعتبر Non-Invygo
+      console.log(`Non-Invygo booking: ${booking || 'empty (Monthly/Daily)'}`);
       return true;
     });
+    console.log('Filtered Non-Invygo rows:', filtered.length);
     if (!filtered.length) {
       setCopyToast('No non-Invygo rows to copy!');
       setTimeout(() => setCopyToast(''), 1500);
@@ -226,8 +227,52 @@ export default function ContractsReport({ onBack }) {
           }
           return val;
         }
-        if (colKey === 'Pick-up Date') {
-          return formatToDDMMYYYY(row['Pick-up Date']);
+        return row[colKey] ?? '';
+      }).join('\t')
+    );
+    const text = rows.join('\n');
+    navigator.clipboard.writeText(text);
+    setCopyToast('Copied!');
+    setTimeout(() => setCopyToast(''), 1500);
+  };
+
+  const handleCopyMonthlyOnly = () => {
+    const data = activeTab === 'opened' ? openedContracts : closedContracts;
+    if (!data.length) return;
+    const copyOrder = [
+      'Contract No.',
+      'Booking Number',
+      'Customer',
+      'Pick-up Branch',
+      'Plate No.',
+      'Model',
+      'Pick-up Date',
+      'Phone Number',
+      'Drop-off Date'
+    ];
+    const filtered = data.filter(row => {
+      const val = row['Booking Number'];
+      return !val && !(row['Drop-off Date'] && isDailyContract(row['Pick-up Date'], row['Drop-off Date']));
+    });
+    if (!filtered.length) {
+      setCopyToast('No Monthly rows to copy!');
+      setTimeout(() => setCopyToast(''), 1500);
+      return;
+    }
+    const rows = filtered.map(row =>
+      copyOrder.map(colKey => {
+        if (colKey === 'Booking Number') {
+          const val = row['Booking Number'];
+          if (val && String(val).trim().toLowerCase().startsWith('c')) {
+            return 'Leasing';
+          }
+          if (!val) {
+            if (row['Drop-off Date'] && isDailyContract(row['Pick-up Date'], row['Drop-off Date'])) {
+              return 'Daily';
+            }
+            return 'Monthly';
+          }
+          return val;
         }
         return row[colKey] ?? '';
       }).join('\t')
@@ -411,7 +456,7 @@ export default function ContractsReport({ onBack }) {
           {dataToRender.length === 0 ? (
             <p style={{ fontSize: '15px', color: purpleDark }}>No results found for "{search}".</p>
           ) : (
-            <ContractsTable data={dataToRender} columns={columnsToRender} selectedColumns={selectedColumns} toggleColumn={toggleColumn} handleCopyAllTable={handleCopyAllTable} handleCopyInvygoOnly={handleCopyInvygoOnly} handleCopyNonInvygoOnly={handleCopyNonInvygoOnly} setSelectedContract={setSelectedContract} setShowModal={setShowModal} copiedContractNo={copiedContractNo} setCopiedContractNo={setCopiedContractNo} setCopyToast={setCopyToast} tableRef={tableRef} />
+            <ContractsTable data={dataToRender} columns={columnsToRender} selectedColumns={selectedColumns} toggleColumn={toggleColumn} handleCopyAllTable={handleCopyAllTable} handleCopyInvygoOnly={handleCopyInvygoOnly} handleCopyNonInvygoOnly={handleCopyNonInvygoOnly} handleCopyMonthlyOnly={handleCopyMonthlyOnly} setSelectedContract={setSelectedContract} setShowModal={setShowModal} copiedContractNo={copiedContractNo} setCopiedContractNo={setCopiedContractNo} setCopyToast={setCopyToast} tableRef={tableRef} />
           )}
         </div>
       ) : (
@@ -428,7 +473,7 @@ export default function ContractsReport({ onBack }) {
             {dataToRender.length === 0 ? (
               <p style={{ fontSize: '15px', color: purpleDark }}>No contracts {activeTab} on this date.</p>
             ) : (
-              <ContractsTable data={dataToRender} columns={columnsToRender} selectedColumns={selectedColumns} toggleColumn={toggleColumn} handleCopyAllTable={handleCopyAllTable} handleCopyInvygoOnly={handleCopyInvygoOnly} handleCopyNonInvygoOnly={handleCopyNonInvygoOnly} setSelectedContract={setSelectedContract} setShowModal={setShowModal} copiedContractNo={copiedContractNo} setCopiedContractNo={setCopiedContractNo} setCopyToast={setCopyToast} tableRef={tableRef} />
+              <ContractsTable data={dataToRender} columns={columnsToRender} selectedColumns={selectedColumns} toggleColumn={toggleColumn} handleCopyAllTable={handleCopyAllTable} handleCopyInvygoOnly={handleCopyInvygoOnly} handleCopyNonInvygoOnly={handleCopyNonInvygoOnly} handleCopyMonthlyOnly={handleCopyMonthlyOnly} setSelectedContract={setSelectedContract} setShowModal={setShowModal} copiedContractNo={copiedContractNo} setCopiedContractNo={setCopiedContractNo} setCopyToast={setCopyToast} tableRef={tableRef} />
             )}
           </div>
         </>

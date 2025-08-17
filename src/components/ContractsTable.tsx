@@ -20,6 +20,7 @@ interface ContractsTableProps {
   handleCopyAllTable: () => void;
   handleCopyInvygoOnly: () => void;
   handleCopyNonInvygoOnly: () => void;
+  handleCopyMonthlyOnly: () => void;
   setSelectedContract: (contract: ContractRow) => void;
   setShowModal: (show: boolean) => void;
   copiedContractNo: string | null;
