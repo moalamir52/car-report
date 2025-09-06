@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { getTodayDate, parseDateEjarFile, toDateOnlyString } from '../utils/dateUtils.ts';
+import { fetchCarsDatabase, getCarModel } from '../utils/carsDatabase.ts';
 
 const normalize = (val) => (val || '').toString().trim().toLowerCase();
 
@@ -47,7 +48,22 @@ export const useContractsData = () => {
       const workbook = XLSX.read(data);
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-      setFileData(json);
+      
+      // جلب قاعدة بيانات السيارات وتحديث الموديلات
+      const carsMap = await fetchCarsDatabase();
+      const updatedJson = json.map(row => {
+        const plateNo = row['Plate No.'];
+        if (plateNo) {
+          const normalizedPlate = (plateNo || '').toString().trim().toLowerCase();
+          const carModel = carsMap.get(normalizedPlate);
+          if (carModel) {
+            row['Model'] = carModel;
+          }
+        }
+        return row;
+      });
+      
+      setFileData(updatedJson);
       lastParseDateFn.current = parseDateEjarFile;
     } catch (err) {
       console.error('Error reading file:', err);

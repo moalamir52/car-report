@@ -1,5 +1,6 @@
 import React from 'react';
 import { inputStyle, buttonStyle, purpleDark } from '../styles.ts';
+import { clearCarsCache, fetchCarsDatabase } from '../utils/carsDatabase.ts';
 
 export const Controls = ({
   startDate,
@@ -12,6 +13,11 @@ export const Controls = ({
   runContractCheck,
   checkingContracts,
 }) => {
+  const handleRefreshCarsDB = async () => {
+    clearCarsCache();
+    await fetchCarsDatabase();
+    alert('✅ Cars database refreshed!');
+  };
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '32px', marginBottom: 32 }}>
       <div>
@@ -47,6 +53,16 @@ export const Controls = ({
             title="Check contracts status"
           >
             {checkingContracts ? '🕵️ Checking...' : '🕵️ Check Contracts'}
+          </button>
+        </div>
+        <div>
+          <label style={{ fontSize: '15px', fontWeight: '600', color: purpleDark }}></label><br />
+          <button
+            style={{ ...buttonStyle, marginTop: 8, marginLeft: 4, padding: '8px 16px', fontSize: '14px' }}
+            onClick={handleRefreshCarsDB}
+            title="Refresh cars database from Google Sheets"
+          >
+            🔄 Refresh Cars DB
           </button>
         </div>
       </div>
