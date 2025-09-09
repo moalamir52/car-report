@@ -298,41 +298,83 @@ const [monthlyClosedGroup, setMonthlyClosedGroup] = useState(null);
 const unifiedModelName = (model: string): string => {
   const cleaned = model.trim().toLowerCase();
 
+  // Peugeot 2008
   if (
     cleaned === 'peugeot - 2008' ||
     cleaned === '2008 2025' ||
-    cleaned === 'peugeot 2008 active'
-  ) return 'Peugeot 2008';
+    cleaned === 'peugeot 2008 active' ||
+    cleaned === 'peugeot 2008 2025'
+  ) return 'Peugeot 2008 2025';
 
+  // Peugeot 208
+  if (
+    cleaned === 'peugeot 208 2025' ||
+    cleaned === '208 2025'
+  ) return 'Peugeot 208 2025';
+
+  // Peugeot 408 2025
+  if (
+    cleaned === 'peugeot 408 2025' ||
+    cleaned === '408 2025'
+  ) return 'Peugeot 408 2025';
+
+  // Peugeot 408 2026
+  if (
+    cleaned === 'peugeot 408 2026' ||
+    cleaned === '408 2026'
+  ) return 'Peugeot 408 2026';
+
+  // MG 5 - إصلاح المشكلة الرئيسية
   if (
     cleaned === 'mg5 1.5l cvt std' ||
     cleaned === 'mg5 1.5l at std' ||
-    cleaned === '5 2025'
-  ) return 'MG5 2025';
+    cleaned === '5 2025' ||
+    cleaned === 'mg 5 2025' ||
+    cleaned === 'mg5 2025'
+  ) return 'Mg 5 2025';
 
-  if (cleaned === '5 2024' || cleaned === 'mg5 2024') return 'MG5 2024';
+  if (
+    cleaned === '5 2024' ||
+    cleaned === 'mg5 2024' ||
+    cleaned === 'mg 5 2024'
+  ) return 'Mg 5 2024';
+
   if (cleaned === 'mg5 del 2024') return 'MG5 DEL';
 
+  // Chery Tiggo 4 Pro - إصلاح مشكلة pro/Pro
   if (
     cleaned === 'tiggo 4 pro' ||
     cleaned === 'tiggo 4  2025' ||
-    cleaned === 'tiggo 4 2025'
-  ) return 'Tiggo 4';
+    cleaned === 'tiggo 4 2025' ||
+    cleaned === 'chery tiggo 4 pro 2025' ||
+    cleaned === 'chery tiggo 4 pro 2025'
+  ) return 'Chery Tiggo 4 Pro 2025';
 
+  // Chery Arrizo 5
+  if (
+    cleaned === 'chery arrizo 5 2025' ||
+    cleaned === 'arrizo 5 2025'
+  ) return 'Chery Arrizo 5 2025';
+
+  // Geely Emgrand
   if (
     cleaned === 'emgrand 2024' ||
     cleaned === 'geely emgrand gs' ||
-    cleaned === 'emgrand gk 2024'
-  ) return 'Geely Emgrand';
+    cleaned === 'emgrand gk 2024' ||
+    cleaned === 'geely emgrand 2024'
+  ) return 'Geely Emgrand 2024';
 
+  // Mitsubishi Attrage
   if (
     cleaned === 'attrage 2023' ||
     cleaned === 'mitsubishi attrage' ||
-    cleaned === 'attrage - 2023'
-  ) return 'Attrage 2023';
+    cleaned === 'attrage - 2023' ||
+    cleaned === 'mitsubishi attrage 2023'
+  ) return 'Mitsubishi Attrage 2023';
 
   if (cleaned === 'attrage 2022') return 'Attrage 2022';
 
+  // Pegas
   if (
     cleaned === 'pegas 2024' ||
     cleaned === 'kia pegas 2024' ||
@@ -340,15 +382,22 @@ const unifiedModelName = (model: string): string => {
     cleaned === 'kia pegas'
   ) return 'Pegas 2024';
 
-  if (cleaned === 'kia pegas') return 'KIA Pegas';
-
+  // JAC
   if (
     cleaned === 's4 2023' ||
-    cleaned === 'jac-js4'
-  ) return 'JAC S4';
+    cleaned === 'jac-js4' ||
+    cleaned === 'jac s4 2023'
+  ) return 'Jac S4 2023';
 
-  if (cleaned === 's3 2023') return 'S3 2023';
-  if (cleaned === 'j7 2023') return 'J7 2023';
+  if (
+    cleaned === 's3 2023' ||
+    cleaned === 'jac s3 2023'
+  ) return 'Jac S3 2023';
+
+  if (
+    cleaned === 'j7 2023' ||
+    cleaned === 'jac j7 2023'
+  ) return 'Jac J7 2023';
 
   return model.trim(); // كل الباقي يرجع كما هو
 };
