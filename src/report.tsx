@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import React from 'react';
+import { utils, writeFile } from 'xlsx';
 
 const yellow = '#FFD600';
 const yellowDark = '#FFC300';
@@ -170,20 +171,128 @@ const [monthlyClosedGroup, setMonthlyClosedGroup] = useState(null);
 
   const pad = (v) => (v ? v.toString().padStart(2, "0") : "00");
 
-  const filteredByDate = data.filter((row) => {
-    const rawDate = row["Pick-up Date"];
-    if (!rawDate) return false;
-    const cleaned = rawDate.split(" ")[0].replaceAll("/", "-");
-    const parts = cleaned.split("-");
-    let yyyy, mm, dd;
-    if (parts[0]?.length === 4) {
-      [yyyy, mm, dd] = parts;
-    } else {
-      [dd, mm, yyyy] = parts;
+  // دمج العقود المفتوحة والمغلقة اللي اتفتحت في نفس التاريخ
+  const filteredByDate = (() => {
+    // العقود المفتوحة حالياً
+    const openContracts = data.filter((row) => {
+      const rawDate = row["Pick-up Date"];
+      if (!rawDate) return false;
+      
+      const dateStr = rawDate.toString().trim();
+      let normalized = "";
+      
+      if (dateStr.includes("-")) {
+        const datePart = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})/); 
+        if (datePart) {
+          const [, dd, mm, yyyy] = datePart;
+          normalized = `${yyyy}-${pad(mm)}-${pad(dd)}`;
+        }
+      }
+      
+      return normalized === selectedDate;
+    });
+
+    // العقود المغلقة اللي اتفتحت في نفس التاريخ
+    const closedContractsFromDate = [];
+    
+    // من العقود المغلقة Invygo
+    if (latestInvygoGroup?.allGroups) {
+      latestInvygoGroup.allGroups.forEach(group => {
+        group.contracts.forEach(row => {
+          if (row.length > 8) { // تأكد من وجود عمود Pick-up Date
+            const pickupDate = row[8]; // عمود Pick-up Date
+            if (pickupDate) {
+              const dateStr = pickupDate.toString().trim();
+              let normalized = "";
+              
+              if (dateStr.includes("-")) {
+                const datePart = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})/); 
+                if (datePart) {
+                  const [, dd, mm, yyyy] = datePart;
+                  normalized = `${yyyy}-${pad(mm)}-${pad(dd)}`;
+                }
+              } else if (dateStr.includes("/")) {
+                const datePart = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})/); 
+                if (datePart) {
+                  const [, dd, mm, yyyy] = datePart;
+                  normalized = `${yyyy}-${pad(mm)}-${pad(dd)}`;
+                }
+              }
+              
+              if (normalized === selectedDate) {
+                // تحويل صف العقد المغلق لنفس تنسيق العقود المفتوحة
+                const contractData = {
+                  "Contract No.": row[0] || "",
+                  "Booking Number": row[1] || "",
+                  "Customer": row[2] || "",
+                  "Pick-up Branch": row[3] || "",
+                  "EJAR": "",
+                  "Model ( Ejar )": "",
+                  "INVYGO": row[4] || "",
+                  "Model": row[5] || "",
+                  "Pick-up Date": row[8] || "",
+                  "Phone Number": row[9] || "",
+                  "Drop-off Date": "" // العقود المغلقة مش عندها drop-off date في نفس المكان
+                };
+                closedContractsFromDate.push(contractData);
+              }
+            }
+          }
+        });
+      });
     }
-    const normalized = `${yyyy}-${pad(mm)}-${pad(dd)}`;
-    return normalized === selectedDate;
-  });
+
+    // من العقود المغلقة Monthly
+    if (monthlyClosedGroup?.allGroups) {
+      monthlyClosedGroup.allGroups.forEach(group => {
+        group.contracts.forEach(row => {
+          if (row.length > 8) {
+            const pickupDate = row[8];
+            if (pickupDate) {
+              const dateStr = pickupDate.toString().trim();
+              let normalized = "";
+              
+              if (dateStr.includes("-")) {
+                const datePart = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})/); 
+                if (datePart) {
+                  const [, dd, mm, yyyy] = datePart;
+                  normalized = `${yyyy}-${pad(mm)}-${pad(dd)}`;
+                }
+              } else if (dateStr.includes("/")) {
+                const datePart = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})/); 
+                if (datePart) {
+                  const [, dd, mm, yyyy] = datePart;
+                  normalized = `${yyyy}-${pad(mm)}-${pad(dd)}`;
+                }
+              }
+              
+              if (normalized === selectedDate) {
+                const contractData = {
+                  "Contract No.": row[0] || "",
+                  "Booking Number": row[1] || "",
+                  "Customer": row[2] || "",
+                  "Pick-up Branch": row[3] || "",
+                  "EJAR": "",
+                  "Model ( Ejar )": "",
+                  "INVYGO": row[4] || "",
+                  "Model": row[5] || "",
+                  "Pick-up Date": row[8] || "",
+                  "Phone Number": row[9] || "",
+                  "Drop-off Date": ""
+                };
+                closedContractsFromDate.push(contractData);
+              }
+            }
+          }
+        });
+      });
+    }
+
+    // دمج العقود المفتوحة والمغلقة
+    return [...openContracts, ...closedContractsFromDate];
+  })();
+
+
 
   // ✅ عرض عدد السيارات حسب الموديل بعد التجميع الصحيح
 const unifiedModelName = (model: string): string => {
@@ -468,6 +577,7 @@ const selectedClosedGroups = allClosedGroups.filter(
           <table style={{ borderCollapse: "collapse", width: "100%", marginBottom: 8 }}>
             <thead>
               <tr>
+                <th style={th}>#</th>
                 <th style={th}>Model</th>
                 <th style={th}>Total Cars</th>
               </tr>
@@ -484,13 +594,20 @@ const selectedClosedGroups = allClosedGroups.filter(
                 })
                 .map(([model, count], idx) => (
                   <tr key={idx}>
+                    <td style={td}>{idx + 1}</td>
                     <td style={td}>{model}</td>
                     <td style={{...td, cursor: 'pointer', color: '#0D47A1', fontWeight: 'bold'}} onClick={() => handleModelCountClick(model)}>{count}</td>
                   </tr>
                 ))}
               <tr>
+                <td style={th}></td>
                 <td style={th}><strong>TOTAL</strong></td>
-                <td style={th}>
+                <td style={{...th, cursor: 'pointer', color: '#0D47A1', fontWeight: 'bold'}} onClick={() => {
+                  const allInvygoCars = data.filter(row => /^\d+$/.test(String(row["Booking Number"] || "").trim()));
+                  setCurrentList(allInvygoCars);
+                  setSelectedRow(null);
+                  setShowModal(true);
+                }}>
                   <strong>{Object.values(allCarCount).reduce((a, b) => a + b, 0)}</strong>
                 </td>
               </tr>
@@ -529,12 +646,14 @@ const selectedClosedGroups = allClosedGroups.filter(
   <table style={{ borderCollapse: "collapse", width: "100%", marginBottom: 8 }}>
     <thead>
       <tr>
+        <th style={th}>#</th>
         <th style={th}>Category</th>
         <th style={th}>Total</th>
       </tr>
     </thead>
     <tbody>
       <tr>
+        <td style={td}>1</td>
         <td style={td}>Invygo Monthly</td>
         <td style={{...td, cursor: 'pointer', color: '#0D47A1', fontWeight: 'bold'}} onClick={() => handleOpenContractsClick('Invygo')}>
           {
@@ -545,6 +664,7 @@ const selectedClosedGroups = allClosedGroups.filter(
         </td>
       </tr>
       <tr>
+        <td style={td}>2</td>
         <td style={td}>Monthly Customers</td>
         <td style={{...td, cursor: 'pointer', color: '#4A148C', fontWeight: 'bold'}} onClick={() => handleOpenContractsClick('Monthly')}>
           {
@@ -555,6 +675,7 @@ const selectedClosedGroups = allClosedGroups.filter(
         </td>
       </tr>
       <tr>
+        <td style={td}>3</td>
         <td style={td}>Leasing</td>
         <td style={{...td, cursor: 'pointer', color: '#2E7D32', fontWeight: 'bold'}} onClick={() => handleOpenContractsClick('Leasing')}>
           {
@@ -565,6 +686,7 @@ const selectedClosedGroups = allClosedGroups.filter(
         </td>
       </tr>
       <tr>
+        <td style={td}>4</td>
         <td style={td}>Daily</td>
         <td style={{...td, cursor: 'pointer', color: '#EF6C00', fontWeight: 'bold'}} onClick={() => handleOpenContractsClick('Daily')}>
           {
@@ -575,8 +697,16 @@ const selectedClosedGroups = allClosedGroups.filter(
         </td>
       </tr>
       <tr>
+        <td style={th}></td>
         <td style={th}><strong>TOTAL Rented Business Bay</strong></td>
-        <td style={th}>
+        <td style={{...th, cursor: 'pointer', color: '#0D47A1', fontWeight: 'bold'}} onClick={() => {
+          const allContracts = data.filter(row =>
+            Object.keys(row).length > 1 && row["Customer"] && row["Customer"]
+          );
+          setCurrentList(allContracts);
+          setSelectedRow(null);
+          setShowModal(true);
+        }}>
           <strong>
             {
               data.filter(row =>
@@ -633,6 +763,7 @@ const selectedClosedGroups = allClosedGroups.filter(
             <table style={{ borderCollapse: "collapse", width: "100%", marginBottom: 8 }}>
               <thead>
                 <tr>
+                  <th style={th}>#</th>
                   <th style={th}>Model</th>
                   <th style={th}>Plate Number</th>
                 </tr>
@@ -675,6 +806,7 @@ const selectedClosedGroups = allClosedGroups.filter(
         }}
         style={{ cursor: "pointer", backgroundColor: "#f9f9f9" }}
       >
+        <td style={td}>{idx + 1}</td>
         <td style={{ ...td, textAlign: 'center' }}>
           <div style={{ display: 'inline-flex', gap: '16px', alignItems: 'center', justifyContent: 'center' }}>
             <span>{row["Model"]}</span>
@@ -691,7 +823,7 @@ const selectedClosedGroups = allClosedGroups.filter(
             </span>
           </div>
         </td>
-        <td style={td}>{row["INVYGO"]}</td>
+        <td style={td}>{row["INVYGO"] || row["EJAR"] || ""}</td>
       </tr>
     );
   })}
@@ -734,6 +866,7 @@ const selectedClosedGroups = allClosedGroups.filter(
             <table style={{ borderCollapse: "collapse", width: "100%", marginBottom: 8 }}>
               <thead>
                 <tr>
+                  <th style={th}>#</th>
                   <th style={th}>Model</th>
                   <th style={th}>Plate Number</th>
                 </tr>
@@ -775,6 +908,13 @@ const selectedClosedGroups = allClosedGroups.filter(
             }}
             style={{ cursor: "pointer", backgroundColor: "#fdfbe3" }}
           >
+            <td style={td}>{(() => {
+              let counter = 0;
+              for (let g = 0; g < gIdx; g++) {
+                counter += selectedClosedGroups[g].contracts.length;
+              }
+              return counter + idx + 1;
+            })()}</td>
             <td style={td}>
               {model} <span style={{ border: `1px solid ${bookingColor}`, padding: "2px 6px", borderRadius: 8, marginLeft: 6, fontSize: "12px", fontWeight: "bold", color: bookingColor }}>{type}</span>
             </td>
@@ -785,7 +925,7 @@ const selectedClosedGroups = allClosedGroups.filter(
     })
   ) : (
     <tr>
-      <td style={td} colSpan={2}>No closed contracts for this date.</td>
+      <td style={td} colSpan={3}>No closed contracts for this date.</td>
     </tr>
   )}
 </tbody>
@@ -829,7 +969,7 @@ const selectedClosedGroups = allClosedGroups.filter(
               <thead>
                 <tr>
                   <th
-                    colSpan={invygoClosedColumns.length}
+                    colSpan={invygoClosedColumns.length + 1}
                     style={{
                       ...th,
                       background: yellow,
@@ -846,6 +986,7 @@ const selectedClosedGroups = allClosedGroups.filter(
                   </th>
                 </tr>
                 <tr>
+                  <th style={th}>#</th>
                   {invygoClosedColumns.map((col, idx) => (
                     <th key={idx} style={th}>{col}</th>
                   ))}
@@ -858,6 +999,13 @@ const selectedClosedGroups = allClosedGroups.filter(
     {group.contracts.length > 0 ? (
       group.contracts.map((row, idx) => (
         <tr key={`row-${gIdx}-${idx}`}>
+          <td style={td}>{(() => {
+            let counter = 0;
+            for (let g = 0; g < gIdx; g++) {
+              counter += selectedClosedGroups[g].contracts.length;
+            }
+            return counter + idx + 1;
+          })()}</td>
           {invygoClosedColumns.map((_, i) => (
             <td key={`col-${i}`} style={td}>{row[i] || ""}</td>
           ))}
@@ -865,6 +1013,7 @@ const selectedClosedGroups = allClosedGroups.filter(
       ))
     ) : (
       <tr key={`empty-${gIdx}`}>
+        <td style={td}></td>
         {invygoClosedColumns.map((_, idx) => (
           <td key={`col-${idx}`} style={td}></td>
         ))}
@@ -874,7 +1023,7 @@ const selectedClosedGroups = allClosedGroups.filter(
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={invygoClosedColumns.length} style={td}>No closed contracts found for this date.</td>
+                    <td colSpan={invygoClosedColumns.length + 1} style={td}>No closed contracts found for this date.</td>
                   </tr>
                 )}
               </tbody>
@@ -1084,7 +1233,29 @@ const selectedClosedGroups = allClosedGroups.filter(
               marginBottom: "24px",
               textAlign: "center"
             }}>
-              Open Contracts for this Model
+              📊 Open Contracts ({currentList.length} contracts)
+              <button
+                onClick={() => {
+                  const ws = utils.json_to_sheet(currentList);
+                  const wb = utils.book_new();
+                  utils.book_append_sheet(wb, ws, 'Contracts');
+                  writeFile(wb, `Contracts_Export_${new Date().toISOString().slice(0,10)}.xlsx`);
+                  showCopyMsg('Excel exported!');
+                }}
+                style={{
+                  marginLeft: '16px',
+                  background: '#2E7D32',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: 'bold'
+                }}
+              >
+                📥 Export Excel
+              </button>
             </div>
             <div style={{overflowX: 'auto', padding: '0 2px 0 2px', position: 'relative'}}>
               {copyMsg && (
@@ -1111,6 +1282,14 @@ const selectedClosedGroups = allClosedGroups.filter(
                     <tr style={{ backgroundColor: "#FFD700" }}>
                       <th style={{ padding: "8px", border: "1px solid #800080", color: "#800080", fontWeight: "bold", textAlign: "center", background: '#fffbe7', position: 'sticky', top: 0, cursor: 'pointer' }}
                         onClick={() => copyToClipboard(currentList.map((row, i) => Object.entries(row).filter(([key]) => key.toLowerCase() !== 'replacement' && key.toLowerCase() !== 'replacement date').map(([_, value]) => value).join('\t')).join('\n'), 'All rows copied!')}
+                        onDoubleClick={() => {
+                          const ws = utils.json_to_sheet(currentList);
+                          const wb = utils.book_new();
+                          utils.book_append_sheet(wb, ws, 'Contracts');
+                          writeFile(wb, `Contracts_Export_${new Date().toISOString().slice(0,10)}.xlsx`);
+                          showCopyMsg('Excel exported!');
+                        }}
+                        title="Click to copy, Double-click to export Excel"
                       >#</th>
                       {Object.keys(currentList[0]).filter(key => key.toLowerCase() !== 'replacement' && key.toLowerCase() !== 'replacement date').map((key, i) => (
                         <th key={i} style={{ padding: "8px", border: "1px solid #800080", color: "#800080", fontWeight: "bold", textAlign: "center", background: '#fffbe7', position: 'sticky', top: 0 }}>{key}</th>
