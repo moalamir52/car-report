@@ -1,17 +1,26 @@
 // YELO Protection System for Car Reports
 (function() {
-  const YELO_BASE_URL = 'https://yelo-dashboard.firebaseapp.com/';
+  const YELO_BASE_URL = 'https://moalamir52.github.io/Yelo/';
   const PROJECT_NAME = 'reports';
   
   function checkAuth() {
-    const authData = localStorage.getItem('yelo_auth');
-    if (!authData) {
+    // Check both old and new auth systems
+    const oldAuth = localStorage.getItem('isAuthenticated');
+    const newAuth = localStorage.getItem('yelo_auth');
+    
+    if (!oldAuth && !newAuth) {
       redirectToLogin('No authentication found');
       return false;
     }
 
+    // If old system is used, redirect to login for upgrade
+    if (oldAuth && !newAuth) {
+      redirectToLogin('Please login again with new system');
+      return false;
+    }
+
     try {
-      const parsed = JSON.parse(authData);
+      const parsed = JSON.parse(newAuth);
       const now = new Date().getTime();
       
       if (!parsed.expiry || now >= parsed.expiry) {
@@ -37,7 +46,7 @@
 
   function redirectToLogin(reason) {
     alert('Authentication required: ' + reason);
-    window.location.href = YELO_BASE_URL + 'login.html';
+    window.location.href = YELO_BASE_URL;
   }
 
   function showAccessDenied() {
@@ -87,7 +96,10 @@
   window.yeloLogout = function() {
     if (confirm('Are you sure you want to logout?')) {
       localStorage.removeItem('yelo_auth');
-      window.location.href = YELO_BASE_URL + 'login.html';
+      localStorage.removeItem('isAuthenticated');
+      localStorage.removeItem('userName');
+      localStorage.removeItem('userRole');
+      window.location.href = YELO_BASE_URL;
     }
   };
 
