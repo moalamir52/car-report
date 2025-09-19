@@ -1,6 +1,6 @@
 // YELO Protection System for Car Reports
 (function() {
-  const YELO_BASE_URL = 'https://moalamir52.github.io/Yelo/';
+  const YELO_BASE_URL = 'https://yelo-dashboard.firebaseapp.com/';
   const PROJECT_NAME = 'reports';
   
   function checkAuth() {
