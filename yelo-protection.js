@@ -1,6 +1,6 @@
 // YELO Protection System for Car Reports
 (function() {
-  const YELO_BASE_URL = 'https://moalamir52.github.io/Yelo/';
+  const YELO_BASE_URL = 'https://yelo-dashboard.firebaseapp.com/';
   const PROJECT_NAME = 'reports';
   
   function checkAuth() {
@@ -56,7 +56,7 @@
           <i class="fas fa-ban" style="font-size: 48px; color: #f44336; margin-bottom: 20px;"></i>
           <h3 style="color: #333; margin-bottom: 15px;">Access Denied</h3>
           <p style="color: #666; margin-bottom: 20px;">You don't have permission to access Car Reports.<br>Contact the administrator for access.</p>
-          <a href="${YELO_BASE_URL}" style="background: #6a1b9a; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none;">Back to Dashboard</a>
+          <a href="${YELO_BASE_URL}" style="background: #6a1b9a; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none;">Back to YELO</a>
         </div>
       </div>
     `;

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import ReactDOM from "react-dom/client";
+import AuthGuard from "./AuthGuard.tsx";
 import DailyBookingReport from "./report.tsx";
 import ContractsReport from "./ContractsReport.tsx";
 
@@ -10,6 +11,7 @@ function App() {
   const [view, setView] = useState<"daily" | "contracts">("daily");
 
   return (
+    <AuthGuard>
     <div style={{ minHeight: "100vh", background: "#fff", fontFamily: "Cairo, Arial, sans-serif" }}>
       {view === "daily" ? (
         <>
@@ -58,5 +60,6 @@ function App() {
         <ContractsReport onBack={() => setView("daily")} />
       )}
     </div>
+    </AuthGuard>
   );
 }
