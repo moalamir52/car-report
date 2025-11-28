@@ -46,60 +46,16 @@ export const SheetsButtons: React.FC<SheetsButtonsProps> = ({
   }, [onResult]);
 
   const handleWriteToSheet = async () => {
-    if (!extensionInstalled) {
-      onResult('Please install Chrome Extension first');
-      return;
-    }
-    
     if (!openedContracts.length) {
       onResult('No opened contracts to write');
       return;
     }
 
     setLoading(true);
-    
-    // Check existing contracts in sheet first
-    const apiKey = 'AIzaSyDne1rAH8tzzW6_gA8zGzSpCPEc546p-tA';
-    const sheetId = '1XwBko5v8zOdTdv-By8HK_DvZnYT2T12mBw_SIbCfMkE';
-    
-    try {
-      // Get existing contracts from sheet
-      const existingResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Open%20Contract!A:A?key=${apiKey}`);
-      
-      if (existingResponse.ok) {
-        const existingData = await existingResponse.json();
-        const existingContracts = existingData.values ? existingData.values.flat().filter(Boolean) : [];
-        
-        // Filter out contracts that already exist
-        const newContracts = openedContracts.filter(contract => {
-          const contractNo = contract['Contract No.'];
-          return contractNo && !existingContracts.includes(contractNo);
-        });
-        
-        if (newContracts.length === 0) {
-          setLoading(false);
-          onResult('All contracts already exist in sheet!');
-          return;
-        }
-        
-        if (newContracts.length < openedContracts.length) {
-          onResult(`Found ${openedContracts.length - newContracts.length} duplicate contracts. Writing ${newContracts.length} new contracts...`);
-        }
-        
-        // Use filtered contracts for writing
-        const contractsToWrite = newContracts;
-        await writeContractsToSheet(contractsToWrite, apiKey, sheetId);
-        return;
-      }
-    } catch (error) {
-      // If checking fails, proceed with all contracts
-    }
-    
-    // Fallback: write all contracts if check fails
-    await writeContractsToSheet(openedContracts, apiKey, sheetId);
+    writeContractsToSheet(openedContracts);
   };
   
-  const writeContractsToSheet = async (contractsToWrite, apiKey, sheetId) => {
+  const writeContractsToSheet = async (contractsToWrite: any[]) => {
     const rows = contractsToWrite.map(row => {
       const bookingNumber = (() => {
         const val = row['Booking Number'];
@@ -113,35 +69,6 @@ export const SheetsButtons: React.FC<SheetsButtonsProps> = ({
         return val;
       })();
 
-      // تنسيق التواريخ عشان يبقى فيه مسافة بين التاريخ والوقت
-      const formatDate = (dateStr) => {
-        if (!dateStr) return '';
-        const str = String(dateStr).trim();
-        
-        // إذا كان فيه مسافة بالفعل، حول الشرطات إلى /
-        if (str.includes(' ')) {
-          const [datePart, timePart] = str.split(' ');
-          const formatted = `${datePart.replace(/-/g, '/')} ${timePart}`;
-          return formatted;
-        }
-        
-        // بحث عن نمط مثل: 27/11/202514:59 أو 27-11-202514:59 أو 27-11-20251459
-        if (str.length >= 14) {
-          let datepart = str.substring(0, 10).replace(/-/g, '/'); // 27/11/2025
-          let timepart = str.substring(10);                        // 14:59 أو 1459
-          
-          // إذا كان الوقت بدون نقطتين، أضف النقطتين
-          if (timepart.length === 4 && !timepart.includes(':')) {
-            timepart = timepart.substring(0, 2) + ':' + timepart.substring(2);
-          }
-          
-          const formatted = `${datepart} ${timepart}`;
-          return formatted;
-        }
-        
-        return str.replace(/-/g, '/');
-      };
-
       return [
         row['Contract No.'] || '',
         bookingNumber,
@@ -151,37 +78,12 @@ export const SheetsButtons: React.FC<SheetsButtonsProps> = ({
         row['Model'] || '',
         row['Plate No.'] || '', // INVYGO column - رقم السيارة مكرر
         row['Model'] || '',
-        formatDate(row['Pick-up Date']),
+        formatDateForArchive(row['Pick-up Date']),
         row['Phone Number'] || '',
-        formatDate(row['Drop-off Date'])
+        formatDateForArchive(row['Drop-off Date'])
       ];
     });
 
-
-    
-    try {
-      const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Open%20Contract!A1:append?valueInputOption=RAW&key=${apiKey}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          values: rows
-        })
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        setLoading(false);
-        onResult(`Successfully wrote ${rows.length} contracts to sheet!`);
-        return;
-      } else {
-        const error = await response.text();
-        throw new Error(error);
-      }
-    } catch (error) {
-    }
-    
     // كتابة البيانات باستعمال POST form
     const postForm = document.createElement('form');
     postForm.method = 'POST';
@@ -217,13 +119,13 @@ export const SheetsButtons: React.FC<SheetsButtonsProps> = ({
     postForm.submit();
   };
 
-  function isInvygo(val) {
+  function isInvygo(val: any): boolean {
     if (!val) return false;
     const str = String(val).trim();
     return str.toLowerCase().includes('vrd') || /^\d{6,}$/.test(str) || str.toLowerCase().includes('invygo');
   }
 
-  const formatDateForArchive = (dateStr) => {
+  const formatDateForArchive = (dateStr: string | undefined): string => {
     if (!dateStr) return '';
     const str = String(dateStr).trim();
     
@@ -246,8 +148,8 @@ export const SheetsButtons: React.FC<SheetsButtonsProps> = ({
     return str.replace(/-/g, '/');
   };
 
-  const prepareContractsByDate = (contracts) => {
-    const contractsByDate = {};
+  const prepareContractsByDate = (contracts: any[]): any[][] => {
+    const contractsByDate: { [key: string]: any[] } = {};
     contracts.forEach(contract => {
       const dropOffDate = contract['Drop-off Date'];
       if (dropOffDate) {
@@ -260,7 +162,7 @@ export const SheetsButtons: React.FC<SheetsButtonsProps> = ({
     });
 
     const sortedDates = Object.keys(contractsByDate).sort();
-    const rows = [];
+    const rows: any[][] = [];
     
     sortedDates.forEach(date => {
       rows.push([date, '', '', '', '', '', '', '', '', '', '']);
