@@ -13,8 +13,21 @@ export const getTodayDate = () => {
 export function parseDateString(dateStr) {
     if (!dateStr) return null;
     if (dateStr instanceof Date) return dateStr;
-    // إزالة الوقت إذا موجود
-    let [datePart] = dateStr.split(' ');
+    
+    let str = dateStr.toString().trim();
+    let datePart = str;
+    
+    // إذا كان فيه مسافة، خد الجزء الأول
+    if (str.includes(' ')) {
+        datePart = str.split(' ')[0];
+    } else {
+        // إذا مفيش مسافة، شوف لو فيه وقت ملصق
+        if (str.length >= 14) {
+            // نمط مثل: 27/11/202514:59 أو 27-11-20251459
+            datePart = str.substring(0, 10);
+        }
+    }
+    
     // استبدال الفواصل
     datePart = datePart.replace(/\./g, '-').replace(/\//g, '-');
     const parts = datePart.split('-');
@@ -67,7 +80,6 @@ export const parseDateEjarFile = (value) => {
             }
         }
     } catch (e) {
-        console.warn("Invalid date format:", value);
     }
     return null;
 };
@@ -128,7 +140,6 @@ export const parseDateGoogleSheet = (value, row: any = {}, referenceDate = null)
         return `${yyyy}-${pad(mm)}-${pad(dd)}`;
       }
     } catch (e) {
-      console.warn("Invalid date format in Google Sheet:", value);
     }
     return null;
 };
@@ -141,8 +152,32 @@ export const toDateOnlyString = (date) => {
 
 export const formatToDDMMYYYY = (value) => {
     if (!value) return '';
+    
+    let str = value.toString().trim();
+    
+    // إذا كان فيه مسافة بالفعل، حول الشرطات إلى /
+    if (str.includes(' ')) {
+        const [datePart, timePart] = str.split(' ');
+        const formattedDate = datePart.replace(/-/g, '/');
+        return `${formattedDate} ${timePart}`;
+    }
+    
+    // إذا مفيش مسافة وفيه وقت، أضف مسافة ونقطتين وحول الشرطات
+    if (str.length >= 14) {
+        let datePart = str.substring(0, 10).replace(/-/g, '/');
+        let timePart = str.substring(10);
+        
+        // إذا كان الوقت 4 أرقام بدون نقطتين
+        if (timePart.length === 4 && !timePart.includes(':')) {
+            timePart = timePart.substring(0, 2) + ':' + timePart.substring(2);
+        }
+        
+        return `${datePart} ${timePart}`;
+    }
+    
+    // إذا مفيش وقت، اعرض التاريخ بس
     const dateObj = parseDateString(value);
-    if (!dateObj || isNaN(dateObj.getTime())) return value.toString();
+    if (!dateObj || isNaN(dateObj.getTime())) return str.replace(/-/g, '/');
     const day = String(dateObj.getDate()).padStart(2, '0');
     const month = String(dateObj.getMonth() + 1).padStart(2, '0');
     const year = dateObj.getFullYear();

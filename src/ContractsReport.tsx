@@ -9,6 +9,7 @@ import { SearchBar } from './components/SearchBar.tsx';
 import { ContractsTable } from './components/ContractsTable.tsx';
 import { ContractDetailsModal } from './components/ContractDetailsModal.tsx';
 import { ContractCheckResults } from './components/ContractCheckResults.tsx';
+import { SheetsButtons } from './components/SheetsButtons.tsx';
 import { getContractId } from './utils/contractUtils.ts';
 
 const columns = [
@@ -119,6 +120,9 @@ export default function ContractsReport({ onBack }) {
           }
           return val;
         }
+        if (colKey === 'Pick-up Date' || colKey === 'Drop-off Date') {
+          return formatToDDMMYYYY(row[colKey]);
+        }
         return row[colKey] ?? '';
       }).join('\t')
     );
@@ -131,7 +135,7 @@ export default function ContractsReport({ onBack }) {
   function isInvygo(val) {
     if (!val) return false;
     const str = String(val).trim();
-    // تحقق من أرقام Invygo - عادة تبدأ بـ VRD أو تحتوي على نمط معين
+    // Check for Invygo numbers - usually start with VRD or contain specific pattern
     return str.toLowerCase().includes('vrd') || /^\d{6,}$/.test(str) || str.toLowerCase().includes('invygo');
   }
 
@@ -151,14 +155,11 @@ export default function ContractsReport({ onBack }) {
       'Phone Number',
       'Drop-off Date'
     ];
-    console.log('All booking numbers:', data.map(row => row['Booking Number']));
     const filtered = data.filter(row => {
       const booking = row['Booking Number'];
       const result = isInvygo(booking);
-      console.log(`Booking: ${booking}, isInvygo: ${result}`);
       return result;
     });
-    console.log('Filtered Invygo rows:', filtered.length);
     if (!filtered.length) {
       setCopyToast('No Invygo rows to copy!');
       setTimeout(() => setCopyToast(''), 1500);
@@ -178,6 +179,9 @@ export default function ContractsReport({ onBack }) {
             return 'Monthly';
           }
           return val;
+        }
+        if (colKey === 'Pick-up Date' || colKey === 'Drop-off Date') {
+          return formatToDDMMYYYY(row[colKey]);
         }
         return row[colKey] ?? '';
       }).join('\t')
@@ -206,13 +210,11 @@ export default function ContractsReport({ onBack }) {
     ];
     const filtered = data.filter(row => {
       const booking = row['Booking Number'];
-      // إذا كان Invygo، استبعده
+      // If Invygo, exclude it
       if (isInvygo(booking)) return false;
-      // كل شيء آخر (فارغ أو غير Invygo) يُعتبر Non-Invygo
-      console.log(`Non-Invygo booking: ${booking || 'empty (Monthly/Daily)'}`);
+      // Everything else (empty or non-Invygo) is considered Non-Invygo
       return true;
     });
-    console.log('Filtered Non-Invygo rows:', filtered.length);
     if (!filtered.length) {
       setCopyToast('No non-Invygo rows to copy!');
       setTimeout(() => setCopyToast(''), 1500);
@@ -232,6 +234,9 @@ export default function ContractsReport({ onBack }) {
             return 'Monthly';
           }
           return val;
+        }
+        if (colKey === 'Pick-up Date' || colKey === 'Drop-off Date') {
+          return formatToDDMMYYYY(row[colKey]);
         }
         return row[colKey] ?? '';
       }).join('\t')
@@ -281,6 +286,9 @@ export default function ContractsReport({ onBack }) {
             return 'Monthly';
           }
           return val;
+        }
+        if (colKey === 'Pick-up Date' || colKey === 'Drop-off Date') {
+          return formatToDDMMYYYY(row[colKey]);
         }
         return row[colKey] ?? '';
       }).join('\t')
@@ -454,6 +462,12 @@ export default function ContractsReport({ onBack }) {
         handleExportAll={handleExportAll} 
         openedContracts={openedContracts} 
         closedContracts={closedContracts}
+      />
+
+      <SheetsButtons 
+        openedContracts={openedContracts}
+        closedContracts={closedContracts}
+        onResult={setCopyToast}
       />
 
       {isSearching ? (

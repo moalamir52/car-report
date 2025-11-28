@@ -146,7 +146,7 @@ export function ContractsTable({
                     borderBottom: col.key && selectedColumns.includes(col.key) ? `4px solid ${purpleDark}` : th.border
                   }}
                   onClick={() => col.key && toggleColumn(col.key)}
-                  title={col.key ? 'اضغط لتحديد/إلغاء تحديد العمود' : ''}
+                  title={col.key ? 'Click to select/deselect column' : ''}
                 >
                   {col.label}
                 </th>
@@ -171,7 +171,7 @@ export function ContractsTable({
           </tbody>
         </table>
         <div style={{fontSize:12, color:purpleDark, marginTop:4}}>
-          {selectedColumns.length > 0 && "اضغط Ctrl+C لنسخ الأعمدة المحددة"}
+          {selectedColumns.length > 0 && "Press Ctrl+C to copy selected columns"}
         </div>
       </div>
     </div>

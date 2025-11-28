@@ -1,0 +1,412 @@
+import React, { useState, useEffect } from 'react';
+import { buttonStyle, yellow, purpleDark, yellowDark } from '../styles.ts';
+import { isDailyContract } from '../utils/dateUtils.ts';
+
+interface SheetsButtonsProps {
+  openedContracts: any[];
+  closedContracts: any[];
+  onResult: (message: string) => void;
+}
+
+export const SheetsButtons: React.FC<SheetsButtonsProps> = ({
+  openedContracts,
+  closedContracts,
+  onResult
+}) => {
+  const [loading, setLoading] = useState(false);
+  const [extensionInstalled, setExtensionInstalled] = useState(true);
+
+  useEffect(() => {
+    // التحقق من وجود الـ extension
+    const checkExtension = () => {
+      window.postMessage({ type: 'CHECK_EXTENSION' }, '*');
+      setTimeout(() => setExtensionInstalled(true), 100);
+    };
+    checkExtension();
+
+    // استمع للردود من الـ extension
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === 'SHEET_WRITE_SUCCESS') {
+        setLoading(false);
+        onResult(`Successfully wrote ${event.data.count} contracts to sheet!`);
+      } else if (event.data.type === 'SHEET_WRITE_ERROR') {
+        setLoading(false);
+        onResult(`Error: ${event.data.error}`);
+      } else if (event.data.type === 'SHEET_REMOVE_SUCCESS') {
+        setLoading(false);
+        onResult(`Successfully removed ${event.data.count} contracts from sheet`);
+      } else if (event.data.type === 'SHEET_REMOVE_ERROR') {
+        setLoading(false);
+        onResult(`Error: ${event.data.error}`);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [onResult]);
+
+  const handleWriteToSheet = async () => {
+    if (!extensionInstalled) {
+      onResult('Please install Chrome Extension first');
+      return;
+    }
+    
+    if (!openedContracts.length) {
+      onResult('No opened contracts to write');
+      return;
+    }
+
+    setLoading(true);
+    
+    // Check existing contracts in sheet first
+    const apiKey = 'AIzaSyDne1rAH8tzzW6_gA8zGzSpCPEc546p-tA';
+    const sheetId = '1XwBko5v8zOdTdv-By8HK_DvZnYT2T12mBw_SIbCfMkE';
+    
+    try {
+      // Get existing contracts from sheet
+      const existingResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Open%20Contract!A:A?key=${apiKey}`);
+      
+      if (existingResponse.ok) {
+        const existingData = await existingResponse.json();
+        const existingContracts = existingData.values ? existingData.values.flat().filter(Boolean) : [];
+        
+        // Filter out contracts that already exist
+        const newContracts = openedContracts.filter(contract => {
+          const contractNo = contract['Contract No.'];
+          return contractNo && !existingContracts.includes(contractNo);
+        });
+        
+        if (newContracts.length === 0) {
+          setLoading(false);
+          onResult('All contracts already exist in sheet!');
+          return;
+        }
+        
+        if (newContracts.length < openedContracts.length) {
+          onResult(`Found ${openedContracts.length - newContracts.length} duplicate contracts. Writing ${newContracts.length} new contracts...`);
+        }
+        
+        // Use filtered contracts for writing
+        const contractsToWrite = newContracts;
+        await writeContractsToSheet(contractsToWrite, apiKey, sheetId);
+        return;
+      }
+    } catch (error) {
+      // If checking fails, proceed with all contracts
+    }
+    
+    // Fallback: write all contracts if check fails
+    await writeContractsToSheet(openedContracts, apiKey, sheetId);
+  };
+  
+  const writeContractsToSheet = async (contractsToWrite, apiKey, sheetId) => {
+    const rows = contractsToWrite.map(row => {
+      const bookingNumber = (() => {
+        const val = row['Booking Number'];
+        if (val && String(val).trim().toLowerCase().startsWith('c')) return 'Leasing';
+        if (!val) {
+          if (row['Drop-off Date'] && isDailyContract(row['Pick-up Date'], row['Drop-off Date'])) {
+            return 'Daily';
+          }
+          return 'Monthly';
+        }
+        return val;
+      })();
+
+      // تنسيق التواريخ عشان يبقى فيه مسافة بين التاريخ والوقت
+      const formatDate = (dateStr) => {
+        if (!dateStr) return '';
+        const str = String(dateStr).trim();
+        
+        // إذا كان فيه مسافة بالفعل، حول الشرطات إلى /
+        if (str.includes(' ')) {
+          const [datePart, timePart] = str.split(' ');
+          const formatted = `${datePart.replace(/-/g, '/')} ${timePart}`;
+          return formatted;
+        }
+        
+        // بحث عن نمط مثل: 27/11/202514:59 أو 27-11-202514:59 أو 27-11-20251459
+        if (str.length >= 14) {
+          let datepart = str.substring(0, 10).replace(/-/g, '/'); // 27/11/2025
+          let timepart = str.substring(10);                        // 14:59 أو 1459
+          
+          // إذا كان الوقت بدون نقطتين، أضف النقطتين
+          if (timepart.length === 4 && !timepart.includes(':')) {
+            timepart = timepart.substring(0, 2) + ':' + timepart.substring(2);
+          }
+          
+          const formatted = `${datepart} ${timepart}`;
+          return formatted;
+        }
+        
+        return str.replace(/-/g, '/');
+      };
+
+      return [
+        row['Contract No.'] || '',
+        bookingNumber,
+        row['Customer'] || '',
+        row['Pick-up Branch'] || '',
+        row['Plate No.'] || '', // EJAR column - رقم السيارة
+        row['Model'] || '',
+        row['Plate No.'] || '', // INVYGO column - رقم السيارة مكرر
+        row['Model'] || '',
+        formatDate(row['Pick-up Date']),
+        row['Phone Number'] || '',
+        formatDate(row['Drop-off Date'])
+      ];
+    });
+
+
+    
+    try {
+      const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/Open%20Contract!A1:append?valueInputOption=RAW&key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          values: rows
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        setLoading(false);
+        onResult(`Successfully wrote ${rows.length} contracts to sheet!`);
+        return;
+      } else {
+        const error = await response.text();
+        throw new Error(error);
+      }
+    } catch (error) {
+    }
+    
+    // كتابة البيانات باستعمال POST form
+    const postForm = document.createElement('form');
+    postForm.method = 'POST';
+    postForm.action = 'https://script.google.com/macros/s/AKfycbw7XYg2lEq8-vaYFFZtnD5M8OHvUo8EZtIVQQlgYlAVRZHLzDxSVdo6jHPpN-v6l5-RaA/exec';
+    postForm.target = 'hidden_iframe_' + Date.now();
+    postForm.style.display = 'none';
+    
+    const actionInput = document.createElement('input');
+    actionInput.name = 'action';
+    actionInput.value = 'writeOpened';
+    postForm.appendChild(actionInput);
+    
+    const dataInput = document.createElement('input');
+    dataInput.name = 'data';
+    dataInput.value = JSON.stringify(rows);
+    postForm.appendChild(dataInput);
+    
+    const iframe = document.createElement('iframe');
+    iframe.name = postForm.target;
+    iframe.style.display = 'none';
+    
+    iframe.onload = () => {
+      setTimeout(() => {
+        document.body.removeChild(postForm);
+        document.body.removeChild(iframe);
+        setLoading(false);
+        onResult(`Successfully wrote ${rows.length} contracts to sheet!`);
+      }, 3000);
+    };
+    
+    document.body.appendChild(iframe);
+    document.body.appendChild(postForm);
+    postForm.submit();
+  };
+
+  function isInvygo(val) {
+    if (!val) return false;
+    const str = String(val).trim();
+    return str.toLowerCase().includes('vrd') || /^\d{6,}$/.test(str) || str.toLowerCase().includes('invygo');
+  }
+
+  const formatDateForArchive = (dateStr) => {
+    if (!dateStr) return '';
+    const str = String(dateStr).trim();
+    
+    if (str.includes(' ')) {
+      const [datePart, timePart] = str.split(' ');
+      return `${datePart.replace(/-/g, '/')} ${timePart}`;
+    }
+    
+    if (str.length >= 14) {
+      let datepart = str.substring(0, 10).replace(/-/g, '/');
+      let timepart = str.substring(10);
+      
+      if (timepart.length === 4 && !timepart.includes(':')) {
+        timepart = timepart.substring(0, 2) + ':' + timepart.substring(2);
+      }
+      
+      return `${datepart} ${timepart}`;
+    }
+    
+    return str.replace(/-/g, '/');
+  };
+
+  const prepareContractsByDate = (contracts) => {
+    const contractsByDate = {};
+    contracts.forEach(contract => {
+      const dropOffDate = contract['Drop-off Date'];
+      if (dropOffDate) {
+        const dateOnly = dropOffDate.split(' ')[0];
+        if (!contractsByDate[dateOnly]) {
+          contractsByDate[dateOnly] = [];
+        }
+        contractsByDate[dateOnly].push(contract);
+      }
+    });
+
+    const sortedDates = Object.keys(contractsByDate).sort();
+    const rows = [];
+    
+    sortedDates.forEach(date => {
+      rows.push([date, '', '', '', '', '', '', '', '', '', '']);
+      
+      contractsByDate[date].forEach(row => {
+        const bookingNumber = (() => {
+          const val = row['Booking Number'];
+          if (val && String(val).trim().toLowerCase().startsWith('c')) return 'Leasing';
+          if (!val) {
+            if (row['Drop-off Date'] && isDailyContract(row['Pick-up Date'], row['Drop-off Date'])) {
+              return 'Daily';
+            }
+            return 'Monthly';
+          }
+          return val;
+        })();
+
+        rows.push([
+          row['Contract No.'] || '',
+          bookingNumber,
+          row['Customer'] || '',
+          row['Pick-up Branch'] || '',
+          row['Plate No.'] || '',
+          row['Model'] || '',
+          row['Plate No.'] || '',
+          row['Model'] || '',
+          formatDateForArchive(row['Pick-up Date']),
+          row['Phone Number'] || '',
+          formatDateForArchive(row['Drop-off Date'])
+        ]);
+      });
+    });
+    
+    return rows;
+  };
+
+  const handleRemoveFromSheet = async () => {
+    if (!closedContracts.length) {
+      onResult('No closed contracts to remove');
+      return;
+    }
+
+    setLoading(true);
+    const contractNos = closedContracts.map(c => c['Contract No.']).filter(Boolean);
+    
+    // Separate Invygo and Monthly/Daily contracts
+    const invygoContracts = closedContracts.filter(row => isInvygo(row['Booking Number']));
+    const monthlyContracts = closedContracts.filter(row => !isInvygo(row['Booking Number']));
+    
+    // Prepare data for both sheets
+    const invygoRows = prepareContractsByDate(invygoContracts);
+    const monthlyRows = prepareContractsByDate(monthlyContracts);
+    
+    // Send all data to Google Apps Script
+    const postForm = document.createElement('form');
+    postForm.method = 'POST';
+    postForm.action = 'https://script.google.com/macros/s/AKfycbw7XYg2lEq8-vaYFFZtnD5M8OHvUo8EZtIVQQlgYlAVRZHLzDxSVdo6jHPpN-v6l5-RaA/exec';
+    postForm.target = 'hidden_iframe_remove_' + Date.now();
+    postForm.style.display = 'none';
+    
+    const actionInput = document.createElement('input');
+    actionInput.name = 'action';
+    actionInput.value = 'removeAndArchive';
+    postForm.appendChild(actionInput);
+    
+    const dataInput = document.createElement('input');
+    dataInput.name = 'contractsToRemove';
+    dataInput.value = JSON.stringify(contractNos);
+    postForm.appendChild(dataInput);
+    
+    const invygoInput = document.createElement('input');
+    invygoInput.name = 'invygoData';
+    invygoInput.value = JSON.stringify(invygoRows);
+    postForm.appendChild(invygoInput);
+    
+    const monthlyInput = document.createElement('input');
+    monthlyInput.name = 'monthlyData';
+    monthlyInput.value = JSON.stringify(monthlyRows);
+    postForm.appendChild(monthlyInput);
+    
+    const iframe = document.createElement('iframe');
+    iframe.name = postForm.target;
+    iframe.style.display = 'none';
+    
+    iframe.onload = () => {
+      setTimeout(() => {
+        document.body.removeChild(postForm);
+        document.body.removeChild(iframe);
+        setLoading(false);
+        onResult(`Successfully removed ${contractNos.length} contracts and archived ${invygoContracts.length} Invygo + ${monthlyContracts.length} Monthly/Daily contracts!`);
+      }, 3000);
+    };
+    
+    document.body.appendChild(iframe);
+    document.body.appendChild(postForm);
+    postForm.submit();
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexDirection: 'column' }}>
+      {!extensionInstalled && (
+        <div style={{ 
+          backgroundColor: '#fff3cd', 
+          border: '1px solid #ffeaa7', 
+          borderRadius: 8, 
+          padding: 12,
+          fontSize: 14,
+          color: '#856404'
+        }}>
+          📥 To enable automatic writing, install Chrome Extension from folder: chrome-extension
+        </div>
+      )}
+      
+      <div style={{ display: 'flex', gap: 12 }}>
+        <button
+          onClick={handleWriteToSheet}
+          disabled={loading || !openedContracts.length}
+          style={{
+            ...buttonStyle,
+            backgroundColor: yellow,
+            color: purpleDark,
+            border: `2px solid ${purpleDark}`,
+            opacity: loading || !openedContracts.length ? 0.6 : 1
+          }}
+          onMouseOver={e => !loading && openedContracts.length && (e.currentTarget.style.backgroundColor = yellowDark)}
+          onMouseOut={e => !loading && openedContracts.length && (e.currentTarget.style.backgroundColor = yellow)}
+        >
+          {loading ? '⏳ Writing...' : `📊 Write to Sheet (${openedContracts.length})`}
+        </button>
+
+        <button
+          onClick={handleRemoveFromSheet}
+          disabled={loading || !closedContracts.length}
+          style={{
+            ...buttonStyle,
+            backgroundColor: '#ff4444',
+            color: 'white',
+            border: '2px solid #cc0000',
+            opacity: loading || !closedContracts.length ? 0.6 : 1
+          }}
+          onMouseOver={e => !loading && closedContracts.length && (e.currentTarget.style.backgroundColor = '#cc0000')}
+          onMouseOut={e => !loading && closedContracts.length && (e.currentTarget.style.backgroundColor = '#ff4444')}
+        >
+          {loading ? '⏳ Removing...' : `🗑️ Remove Closed (${closedContracts.length})`}
+        </button>
+      </div>
+    </div>
+  );
+};
