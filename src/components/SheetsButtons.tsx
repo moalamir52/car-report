@@ -87,7 +87,7 @@ export const SheetsButtons: React.FC<SheetsButtonsProps> = ({
     // كتابة البيانات باستعمال POST form
     const postForm = document.createElement('form');
     postForm.method = 'POST';
-    postForm.action = 'https://script.google.com/macros/s/AKfycbw7XYg2lEq8-vaYFFZtnD5M8OHvUo8EZtIVQQlgYlAVRZHLzDxSVdo6jHPpN-v6l5-RaA/exec';
+    postForm.action = 'https://script.google.com/macros/s/AKfycbxp8ynxFkiXUJglRTZBg_G_3iUYygb6ZUGM6b9_a39nrxFe7CtiUFf9BP9q0mWzNK0mxQ/exec';
     postForm.target = 'hidden_iframe_' + Date.now();
     postForm.style.display = 'none';
     
@@ -219,7 +219,7 @@ export const SheetsButtons: React.FC<SheetsButtonsProps> = ({
     // Send all data to Google Apps Script
     const postForm = document.createElement('form');
     postForm.method = 'POST';
-    postForm.action = 'https://script.google.com/macros/s/AKfycbw7XYg2lEq8-vaYFFZtnD5M8OHvUo8EZtIVQQlgYlAVRZHLzDxSVdo6jHPpN-v6l5-RaA/exec';
+    postForm.action = 'https://script.google.com/macros/s/AKfycbxp8ynxFkiXUJglRTZBg_G_3iUYygb6ZUGM6b9_a39nrxFe7CtiUFf9BP9q0mWzNK0mxQ/exec';
     postForm.target = 'hidden_iframe_remove_' + Date.now();
     postForm.style.display = 'none';
     
